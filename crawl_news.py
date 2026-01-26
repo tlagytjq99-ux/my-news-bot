@@ -34,16 +34,20 @@ try:
     if response.status_code == 200:
         items = response.json().get('items', [])
         
-        category_counts = {"기업": 0, "기술": 0, "정책": 0, "산업": 0, "기타": 0}
+        # 4대 카테고리만 관리 (기타 제외)
+        target_categories = ["기업", "기술", "정책", "산업"]
+        category_counts = {cat: 0 for cat in target_categories}
         final_data_list = []
-        # 현재 수집 시각
-        collection_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # [수정] 수집일을 년-월-일만 나오게 설정
+        collection_date = datetime.now().strftime("%Y-%m-%d")
 
         for item in items:
             title = item['title'].replace("<b>", "").replace("</b>", "").replace("&quot;", '"').replace("&amp;", "&")
             category = classify_category(title)
             
-            if category_counts[category] < 2:
+            # [수정] 카테고리가 4대 분류에 해당하고, 아직 2개 미만일 때만 추가
+            if category in target_categories and category_counts[category] < 2:
                 try:
                     pub_date = datetime.strptime(item['pubDate'], '%a, %d %b %Y %H:%M:%S +0900')
                     formatted_date = pub_date.strftime('%Y-%m-%d %H:%M')
@@ -51,7 +55,7 @@ try:
                     formatted_date = item['pubDate']
 
                 final_data_list.append({
-                    "수집일": collection_time, # 수집일 항목 추가
+                    "수집일": collection_date,
                     "카테고리": category,
                     "기사제목": title,
                     "발행일": formatted_date,
@@ -67,7 +71,8 @@ try:
             file_name = "news_list.xlsx"
             df.to_excel(file_name, index=False)
             
-            print(f"✅ 수집일({collection_time}) 포함, 분야별 2개씩 추출 완료!")
+            print(f"✅ 수집 완료 ({collection_date})")
+            print(f"📊 수집 현황: {category_counts}")
         else:
             print("❌ 조건에 맞는 검색 결과가 없습니다.")
     else:
