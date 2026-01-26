@@ -2,8 +2,8 @@ name: Daily AI News Crawling
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 매일 오전 9시 (KST)
-  workflow_dispatch:
+    - cron: '0 0 * * *' # 매일 아침 자동으로 실행
+  workflow_dispatch: # 수동으로 실행 버튼 활성화
 
 jobs:
   build:
@@ -18,9 +18,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4 lxml pandas openpyxl
+          pip install requests pandas openpyxl lxml
 
       - name: Run Script
+        # 이 부분이 핵심! 금고(Secrets)에 저장한 값을 로봇에게 전달합니다.
+        env:
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: python crawl_news.py
 
       - name: Commit and Push
@@ -28,5 +32,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add news_list.xlsx
-          git commit -m "Update news list via RSS" || echo "No changes to commit"
+          git commit -m "Update news list" || echo "No changes to commit"
           git push
