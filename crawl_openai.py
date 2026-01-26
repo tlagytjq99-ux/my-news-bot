@@ -4,26 +4,28 @@ import pandas as pd
 from datetime import datetime
 
 async def get_openai_news():
-    print("🌐 OpenAI 뉴스 수집을 시작합니다...")
+    print("🌐 OpenAI 뉴스 수집 시작...")
     news_list = []
     
     async with async_playwright() as p:
-        # 1. 브라우저 실행 (서버 환경을 위해 headless=True)
         browser = await p.chromium.launch(headless=True)
+        # 실제 브라우저처럼 보이게 하기 위한 설정 추가
         context = await browser.new_context(
+            viewport={'width': 1280, 'height': 800},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
         
         try:
-            # 2. OpenAI 뉴스 페이지 접속
-            await page.goto("https://openai.com/news/", wait_until="networkidle")
+            # 타임아웃을 60초로 늘리고 로딩 완료를 기다림
+            await page.goto("https://openai.com/news/", wait_until="networkidle", timeout=60000)
+            # 페이지가 뜬 후 추가로 3초 더 대기 (안전장치)
+            await asyncio.sleep(3)
             
-            # 3. 뉴스 아이템 추출 (현재 OpenAI 사이트 구조 반영)
-            # 리스트 아이템(li) 중 뉴스 기사들을 찾습니다.
             items = await page.query_selector_all('li.relative')
+            print(f"🔎 발견된 아이템 개수: {len(items)}개")
             
-            for item in items[:5]:  # 최신 5개만
+            for item in items[:5]:
                 title_el = await item.query_selector('h3')
                 date_el = await item.query_selector('time')
                 link_el = await item.query_selector('a')
@@ -41,24 +43,22 @@ async def get_openai_news():
                         "링크": link
                     })
         except Exception as e:
-            print(f"❌ 오류 발생: {e}")
+            print(f"❌ 수집 중 오류 발생: {e}")
         finally:
             await browser.close()
-            
     return news_list
 
 if __name__ == "__main__":
-    # 비동기 함수 실행
     results = asyncio.run(get_openai_news())
     
-    if results:
-        # 데이터프레임 생성 및 저장
+    # 데이터가 없어도 에러 방지를 위해 빈 데이터프레임이라도 생성
+    if not results:
+        print("⚠️ 수집된 데이터가 없어 빈 파일을 생성합니다.")
+        df = pd.DataFrame(columns=["수집일", "카테고리", "기사제목", "발행일", "링크"])
+    else:
         df = pd.DataFrame(results)
         df.insert(0, "수집일", datetime.now().strftime("%Y-%m-%d"))
-        
-        # 별도의 파일명으로 저장 (openai_news.xlsx)
-        df.to_excel("openai_news.xlsx", index=False)
-        print(f"✅ OpenAI 수집 완료! (openai_news.xlsx 저장됨)")
-        print(df[['기사제목', '발행일']])
-    else:
-        print("❌ 수집된 데이터가 없습니다.")
+        print(f"✅ {len(results)}건 수집 완료!")
+
+    # 무조건 파일 생성 (Git 에러 방지)
+    df.to_excel("openai_news.xlsx", index=False)
