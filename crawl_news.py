@@ -18,35 +18,41 @@ driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), opti
 
 try:
     keyword = "AI"
-    # 최신순 정렬 주소
     url = f"https://search.naver.com/search.naver?where=news&query={keyword}&sm=tab_opt&sort=1"
     driver.get(url)
     time.sleep(5) 
 
     news_data = []
-    # 뉴스 아이템들이 담긴 구역들을 찾습니다.
-    items = driver.find_elements(By.CSS_SELECTOR, ".news_wrap.api_ani_send")
+    # 뉴스 기사 덩어리들을 찾습니다.
+    items = driver.find_elements(By.CSS_SELECTOR, ".news_wrap")
 
     for item in items:
         try:
-            # 제목과 링크 추출
+            # 1. 제목과 링크
             title_element = item.find_element(By.CSS_SELECTOR, ".news_tit")
             title = title_element.text.strip()
             href = title_element.get_attribute('href')
             
-            # 발행일 추출 (보통 info_group 클래스 내의 info 클래스에 적혀 있음)
-            # '30분 전', '2026.01.26.' 등의 텍스트를 가져옵니다.
-            date_element = item.find_element(By.CSS_SELECTOR, ".info_group .info")
-            publish_date = date_element.text.strip()
+            # 2. 발행일 (여러 패턴 대응)
+            # 네이버 뉴스 구조에 따라 .info 혹은 .sub_txt 등 다양한 이름을 사용합니다.
+            try:
+                # 첫 번째 시도: 일반적인 위치
+                publish_date = item.find_element(By.CSS_SELECTOR, ".info_group .info").text
+            except:
+                try:
+                    # 두 번째 시도: 다른 위치
+                    publish_date = item.find_element(By.CSS_SELECTOR, ".sub_txt").text
+                except:
+                    publish_date = "날짜 정보 없음"
 
-            # 광고성 문구 필터링
-            if "channelPromotion" in href or len(title) < 10:
+            # 광고 및 중복 필터링
+            if "channelPromotion" in href or len(title) < 5:
                 continue
 
             if not any(d['기사제목'] == title for d in news_data):
                 news_data.append({
                     "수집일": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "발행일": publish_date,
+                    "발행일": publish_date.replace("선정", "").strip(), # '언론사 선정' 문구 제거
                     "기사제목": title,
                     "링크": href
                 })
@@ -60,9 +66,9 @@ try:
         df = pd.DataFrame(news_data)
         file_name = "news_list.xlsx"
         df.to_excel(file_name, index=False)
-        print(f"✅ 발행일 포함 {len(news_data)}개 뉴스 수집 성공!")
+        print(f"✅ 총 {len(news_data)}개의 기사를 성공적으로 저장했습니다.")
     else:
-        print("❌ 데이터를 찾지 못했습니다.")
+        print("❌ 뉴스 구역(.news_wrap)을 찾는 데 실패했습니다. 페이지 구조를 다시 확인하세요.")
 
 except Exception as e:
     print(f"오류 발생: {e}")
