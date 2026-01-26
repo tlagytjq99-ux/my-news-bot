@@ -20,7 +20,7 @@ def classify_category(title):
             return category
     return "기타"
 
-# 3. 뉴스 검색 API 설정 (100개를 가져와서 2개씩 골라냅니다)
+# 3. 뉴스 검색 API 설정
 search_keyword = "AI"
 url = f"https://openapi.naver.com/v1/search/news.json?query={search_keyword}&display=100&sort=sim"
 
@@ -34,15 +34,15 @@ try:
     if response.status_code == 200:
         items = response.json().get('items', [])
         
-        # 각 분야별로 2개씩만 담을 바구니
         category_counts = {"기업": 0, "기술": 0, "정책": 0, "산업": 0, "기타": 0}
         final_data_list = []
+        # 현재 수집 시각
+        collection_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         for item in items:
             title = item['title'].replace("<b>", "").replace("</b>", "").replace("&quot;", '"').replace("&amp;", "&")
             category = classify_category(title)
             
-            # 해당 카테고리가 아직 2개 미만일 때만 추가
             if category_counts[category] < 2:
                 try:
                     pub_date = datetime.strptime(item['pubDate'], '%a, %d %b %Y %H:%M:%S +0900')
@@ -51,6 +51,7 @@ try:
                     formatted_date = item['pubDate']
 
                 final_data_list.append({
+                    "수집일": collection_time, # 수집일 항목 추가
                     "카테고리": category,
                     "기사제목": title,
                     "발행일": formatted_date,
@@ -58,20 +59,15 @@ try:
                 })
                 category_counts[category] += 1
 
-        # [변경점] 누적 로직 없이 무조건 새로 저장합니다.
         if final_data_list:
             df = pd.DataFrame(final_data_list)
-            # 카테고리 순서대로 정렬해서 보기 좋게 만듭니다.
+            # 카테고리 순으로 정렬
             df = df.sort_values(by="카테고리")
             
             file_name = "news_list.xlsx"
             df.to_excel(file_name, index=False)
             
-            print("--- 수집 결과 요약 ---")
-            for cat, count in category_counts.items():
-                print(f"[{cat}]: {count}개 수집됨")
-            print("----------------------")
-            print(f"✅ 테스트 완료! '{file_name}'에 새 데이터만 저장되었습니다.")
+            print(f"✅ 수집일({collection_time}) 포함, 분야별 2개씩 추출 완료!")
         else:
             print("❌ 조건에 맞는 검색 결과가 없습니다.")
     else:
