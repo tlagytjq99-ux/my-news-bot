@@ -2,12 +2,12 @@ import os
 import requests
 import pandas as pd
 from datetime import datetime
+from bs4 import BeautifulSoup
 
-# 1. 인증 정보 가져오기 (GitHub Secrets)
+# 1. 인증 정보 및 설정
 client_id = os.environ.get('NAVER_CLIENT_ID')
 client_secret = os.environ.get('NAVER_CLIENT_SECRET')
 
-# 2. 카테고리 분류 함수
 def classify_category(title):
     categories = {
         "기업": ["투자", "유치", "인수", "합병", "M&A", "실적", "상장", "IPO", "파트너십", "협력", "삼성", "네이버", "구글", "오픈AI"],
@@ -20,63 +20,56 @@ def classify_category(title):
             return category
     return "기타"
 
-# 3. 뉴스 검색 API 설정
-search_keyword = "AI"
-url = f"https://openapi.naver.com/v1/search/news.json?query={search_keyword}&display=100&sort=sim"
-
-headers = {
-    "X-Naver-Client-Id": client_id,
-    "X-Naver-Client-Secret": client_secret
-}
-
-try:
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        items = response.json().get('items', [])
-        
-        # 4대 카테고리만 관리 (기타 제외)
-        target_categories = ["기업", "기술", "정책", "산업"]
-        category_counts = {cat: 0 for cat in target_categories}
-        final_data_list = []
-        
-        # [수정] 수집일을 년-월-일만 나오게 설정
-        collection_date = datetime.now().strftime("%Y-%m-%d")
-
+# --- 파트 1: 네이버 뉴스 수집 ---
+def get_naver_news():
+    url = "https://openapi.naver.com/v1/search/news.json?query=AI&display=100&sort=sim"
+    headers = {"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret}
+    res = requests.get(url, headers=headers)
+    news_list = []
+    if res.status_code == 200:
+        items = res.json().get('items', [])
+        counts = {"기업": 0, "기술": 0, "정책": 0, "산업": 0}
         for item in items:
-            title = item['title'].replace("<b>", "").replace("</b>", "").replace("&quot;", '"').replace("&amp;", "&")
-            category = classify_category(title)
-            
-            # [수정] 카테고리가 4대 분류에 해당하고, 아직 2개 미만일 때만 추가
-            if category in target_categories and category_counts[category] < 2:
-                try:
-                    pub_date = datetime.strptime(item['pubDate'], '%a, %d %b %Y %H:%M:%S +0900')
-                    formatted_date = pub_date.strftime('%Y-%m-%d %H:%M')
-                except:
-                    formatted_date = item['pubDate']
+            title = item['title'].replace("<b>","").replace("</b>","").replace("&quot;",'"').replace("&amp;","&")
+            cat = classify_category(title)
+            if cat in counts and counts[cat] < 2:
+                news_list.append({"카테고리": cat, "기사제목": title, "발행일": item['pubDate'][:16], "링크": item['link']})
+                counts[cat] += 1
+    return news_list
 
-                final_data_list.append({
-                    "수집일": collection_date,
-                    "카테고리": category,
-                    "기사제목": title,
-                    "발행일": formatted_date,
-                    "링크": item['link']
-                })
-                category_counts[category] += 1
+# --- 파트 2: 과기정통부 보도자료 수집 ---
+def get_msit_news():
+    # 과기부 보도자료 목록 페이지
+    url = "https://www.msit.go.kr/bbs/list.do?sCode=user&mPid=217&mId=113"
+    # 로봇 차단을 피하기 위한 "사람 브라우저" 흉내 설정
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    msit_list = []
+    try:
+        res = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(res.text, 'lxml')
+        # 게시판 목록에서 제목 요소 찾기 (사이트 구조에 맞게 설정)
+        items = soup.select('div.lst_b li') 
+        count = 0
+        for item in items:
+            title_el = item.select_one('p.tit')
+            if title_el and "AI" in title_el.text or "인공지능" in title_el.text:
+                title = title_el.text.strip()
+                link = "https://www.msit.go.kr" + item.select_one('a')['href']
+                msit_list.append({"카테고리": "정부(과기부)", "기사제목": title, "발행일": "최근", "링크": link})
+                count += 1
+                if count >= 2: break
+    except:
+        print("과기부 사이트 접근에 실패했습니다. (보안 또는 구조 변경)")
+    return msit_list
 
-        if final_data_list:
-            df = pd.DataFrame(final_data_list)
-            # 카테고리 순으로 정렬
-            df = df.sort_values(by="카테고리")
-            
-            file_name = "news_list.xlsx"
-            df.to_excel(file_name, index=False)
-            
-            print(f"✅ 수집 완료 ({collection_date})")
-            print(f"📊 수집 현황: {category_counts}")
-        else:
-            print("❌ 조건에 맞는 검색 결과가 없습니다.")
-    else:
-        print(f"❌ API 오류: {response.status_code}")
+# --- 메인 실행 ---
+collection_date = datetime.now().strftime("%Y-%m-%d")
+all_data = get_naver_news() + get_msit_news()
 
-except Exception as e:
-    print(f"⚠️ 에러 발생: {e}")
+if all_data:
+    df = pd.DataFrame(all_data)
+    df.insert(0, "수집일", collection_date) # 수집일 맨 앞에 추가
+    df.to_excel("news_list.xlsx", index=False)
+    print(f"✅ 수집 완료! 네이버 뉴스 및 과기부 소식이 저장되었습니다.")
+else:
+    print("❌ 수집된 데이터가 없습니다.")
