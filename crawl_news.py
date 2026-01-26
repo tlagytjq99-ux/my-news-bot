@@ -3,11 +3,12 @@ import requests
 import pandas as pd
 from datetime import datetime
 
-# 1. 네이버 API 인증 정보
+# 1. 네이버 API 인증 정보 (GitHub Secrets에서 가져옴)
 client_id = os.environ.get('NAVER_CLIENT_ID')
 client_secret = os.environ.get('NAVER_CLIENT_SECRET')
 
 def classify_category(title):
+    """뉴스 제목을 분석하여 카테고리 분류"""
     categories = {
         "기업": ["투자", "유치", "인수", "합병", "M&A", "실적", "상장", "IPO", "파트너십", "협력", "삼성", "네이버", "구글", "오픈AI"],
         "기술": ["모델", "LLM", "성능", "출시", "특허", "논문", "칩", "반도체", "HBM", "Sora", "GPT", "알고리즘"],
@@ -20,10 +21,13 @@ def classify_category(title):
     return "기타"
 
 def get_naver_news_general():
+    """일반 AI 뉴스 수집 (카테고리별 분류)"""
     news_list = []
     if not client_id or not client_secret: return news_list
+    
     url = "https://openapi.naver.com/v1/search/news.json?query=AI&display=100&sort=sim"
     headers = {"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret}
+    
     try:
         res = requests.get(url, headers=headers, timeout=10)
         if res.status_code == 200:
@@ -33,40 +37,51 @@ def get_naver_news_general():
                 title = item['title'].replace("<b>","").replace("</b>","").replace("&quot;",'"').replace("&amp;","&")
                 cat = classify_category(title)
                 if cat in counts and counts[cat] < 2:
-                    news_list.append({"카테고리": cat, "기사제목": title, "발행일": item['pubDate'][:16], "링크": item['link']})
+                    news_list.append({
+                        "카테고리": cat, 
+                        "기사제목": title, 
+                        "발행일": item['pubDate'][:16], 
+                        "링크": item['link']
+                    })
                     counts[cat] += 1
     except: pass
     return news_list
 
 def get_msit_news_via_api():
+    """네이버 API를 통해 과기정통부 공식 보도자료 성격의 뉴스 수집"""
     msit_list = []
-    url = "https://openapi.naver.com/v1/search/news.json?query=과학기술정보통신부+AI&display=50&sort=date"
+    # 검색어: "과학기술정보통신부"가 포함된 AI 관련 뉴스
+    url = "https://openapi.naver.com/v1/search/news.json?query=과학기술정보통신부+AI&display=20&sort=date"
     headers = {"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret}
+    
     try:
-        res = requests.get(res_url, headers=headers, timeout=10) if (res := requests.get(url, headers=headers)) else None
-        if res and res.status_code == 200:
-            for item in res.json().get('items', []):
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            items = res.json().get('items', [])
+            for item in items[:5]: # 최신 5개 추출
                 title = item['title'].replace("<b>","").replace("</b>","").replace("&quot;",'"').replace("&amp;","&")
-                msit_list.append({"카테고리": "정부(과기부)", "기사제목": title, "발행일": item['pubDate'][:16], "링크": item['link']})
+                msit_list.append({
+                    "카테고리": "정부(과기부)",
+                    "기사제목": title,
+                    "발행일": item['pubDate'][:16],
+                    "링크": item['link']
+                })
     except: pass
     return msit_list
 
 # --- 메인 실행부 ---
 if __name__ == "__main__":
     collection_date = datetime.now().strftime("%Y-%m-%d")
+    
+    # 두 데이터 합치기
     all_data = get_naver_news_general() + get_msit_news_via_api()
 
     if all_data:
         df = pd.DataFrame(all_data)
-
-        # [고급 중복 제거] 
-        # 제목의 앞 15자가 겹치면 동일 기사로 판단 (언론사별 미세한 제목 차이 무시)
-        df['temp_title'] = df['기사제목'].str.slice(0, 15)
-        df = df.drop_duplicates(subset=['temp_title'], keep='first').drop(columns=['temp_title'])
-        
-        # 완전 중복도 한 번 더 체크
-        df = df.drop_duplicates(subset=['기사제목'], keep='first')
-
         df.insert(0, "수집일", collection_date)
+        
+        # 엑셀 저장
         df.to_excel("news_list.xlsx", index=False)
-        print(f"✅ 지능형 중복 제거 완료! 총 {len(df)}건 저장")
+        print(f"✅ 수집 완료! 총 {len(all_data)}건 (과기부 포함)")
+    else:
+        print("❌ 수집된 데이터가 없습니다.")
