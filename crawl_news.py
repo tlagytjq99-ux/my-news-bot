@@ -1,67 +1,87 @@
 import os
+import requests
 import pandas as pd
 from datetime import datetime
-import requests
-from playwright.sync_api import sync_playwright
 
+# 1. 네이버 API 인증 정보 (GitHub Secrets에서 가져옴)
 client_id = os.environ.get('NAVER_CLIENT_ID')
 client_secret = os.environ.get('NAVER_CLIENT_SECRET')
 
-# (네이버 수집 함수는 이전과 동일하므로 생략하거나 그대로 두셔도 됩니다)
-def get_naver_news():
+def classify_category(title):
+    """뉴스 제목을 분석하여 카테고리 분류"""
+    categories = {
+        "기업": ["투자", "유치", "인수", "합병", "M&A", "실적", "상장", "IPO", "파트너십", "협력", "삼성", "네이버", "구글", "오픈AI"],
+        "기술": ["모델", "LLM", "성능", "출시", "특허", "논문", "칩", "반도체", "HBM", "Sora", "GPT", "알고리즘"],
+        "정책": ["정부", "법안", "규제", "가이드라인", "예산", "지원", "국회", "과기부", "EU", "조약", "윤리"],
+        "산업": ["시장", "전망", "도입", "사례", "금융", "의료", "제조", "일자리", "확산", "트렌드", "인력"]
+    }
+    for category, keywords in categories.items():
+        if any(keyword in str(title) for keyword in keywords):
+            return category
+    return "기타"
+
+def get_naver_news_general():
+    """일반 AI 뉴스 수집 (카테고리별 분류)"""
     news_list = []
+    if not client_id or not client_secret: return news_list
+    
     url = "https://openapi.naver.com/v1/search/news.json?query=AI&display=100&sort=sim"
     headers = {"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret}
+    
     try:
         res = requests.get(url, headers=headers, timeout=10)
         if res.status_code == 200:
             items = res.json().get('items', [])
-            for item in items[:8]: # 예시로 8개
-                news_list.append({"카테고리": "네이버", "기사제목": item['title'].replace("<b>","").replace("</b>",""), "발행일": item['pubDate'][:16], "링크": item['link']})
+            counts = {"기업": 0, "기술": 0, "정책": 0, "산업": 0}
+            for item in items:
+                title = item['title'].replace("<b>","").replace("</b>","").replace("&quot;",'"').replace("&amp;","&")
+                cat = classify_category(title)
+                if cat in counts and counts[cat] < 2:
+                    news_list.append({
+                        "카테고리": cat, 
+                        "기사제목": title, 
+                        "발행일": item['pubDate'][:16], 
+                        "링크": item['link']
+                    })
+                    counts[cat] += 1
     except: pass
     return news_list
 
-def get_msit_with_playwright():
+def get_msit_news_via_api():
+    """네이버 API를 통해 과기정통부 공식 보도자료 성격의 뉴스 수집"""
     msit_list = []
-    url = "https://www.msit.go.kr/bbs/list.do?sCode=user&mId=307&mPid=208&pageIndex=1&bbsSeqNo=94&nttSeqNo=&searchOpt=ALL&searchTxt=ai"
+    # 검색어: "과학기술정보통신부"가 포함된 AI 관련 뉴스
+    url = "https://openapi.naver.com/v1/search/news.json?query=과학기술정보통신부+AI&display=20&sort=date"
+    headers = {"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret}
     
-    with sync_playwright() as p:
-        # 브라우저 실행
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        page = context.new_page()
-        
-        try:
-            # 페이지 접속 및 대기
-            page.goto(url, wait_until="networkidle")
-            page.wait_for_selector(".lst_b", timeout=10000) # 리스트가 나타날 때까지 대기
-            
-            # 제목과 링크 추출
-            items = page.query_selector_all(".lst_b li")
-            for item in items[:5]:
-                title_el = item.query_selector("p.tit")
-                link_el = item.query_selector("a")
-                
-                if title_el and link_el:
-                    title = title_el.inner_text().strip()
-                    href = link_el.get_attribute("href")
-                    full_link = "https://www.msit.go.kr" + href
-                    
-                    msit_list.append({
-                        "카테고리": "정부(과기부)",
-                        "기사제목": title,
-                        "발행일": "최근",
-                        "링크": full_link
-                    })
-        except Exception as e:
-            print(f"Playwright 수집 오류: {e}")
-        finally:
-            browser.close()
+    try:
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            items = res.json().get('items', [])
+            for item in items[:5]: # 최신 5개 추출
+                title = item['title'].replace("<b>","").replace("</b>","").replace("&quot;",'"').replace("&amp;","&")
+                msit_list.append({
+                    "카테고리": "정부(과기부)",
+                    "기사제목": title,
+                    "발행일": item['pubDate'][:16],
+                    "링크": item['link']
+                })
+    except: pass
     return msit_list
 
+# --- 메인 실행부 ---
 if __name__ == "__main__":
-    naver = get_naver_news()
-    msit = get_msit_with_playwright()
-    df = pd.DataFrame(naver + msit)
-    df.to_excel("news_list.xlsx", index=False)
-    print(f"✅ 완료! 과기부: {len(msit)}건")
+    collection_date = datetime.now().strftime("%Y-%m-%d")
+    
+    # 두 데이터 합치기
+    all_data = get_naver_news_general() + get_msit_news_via_api()
+
+    if all_data:
+        df = pd.DataFrame(all_data)
+        df.insert(0, "수집일", collection_date)
+        
+        # 엑셀 저장
+        df.to_excel("news_list.xlsx", index=False)
+        print(f"✅ 수집 완료! 총 {len(all_data)}건 (과기부 포함)")
+    else:
+        print("❌ 수집된 데이터가 없습니다.")
