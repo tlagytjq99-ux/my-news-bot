@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 from bs4 import BeautifulSoup
 
-# 1. 인증 정보
+# 1. 네이버 API 인증 정보
 client_id = os.environ.get('NAVER_CLIENT_ID')
 client_secret = os.environ.get('NAVER_CLIENT_SECRET')
 
@@ -42,29 +42,33 @@ def get_naver_news():
 def get_msit_via_google():
     """과기부 사이트 직접 접속 대신 구글 뉴스 RSS를 통해 우회 수집"""
     msit_list = []
-    # 검색어: 과학기술정보통신부 AI (최신순)
+    # 검색어: site:msit.go.kr AI
     rss_url = "https://news.google.com/rss/search?q=site:msit.go.kr+AI&hl=ko&gl=KR&ceid=KR:ko"
     
     try:
         res = requests.get(rss_url, timeout=15)
-        soup = BeautifulSoup(res.text, 'xml') # RSS는 xml 형식을 사용합니다
+        # xml 파서 에러를 피하기 위해 기본 html.parser 사용
+        soup = BeautifulSoup(res.text, 'html.parser') 
         items = soup.find_all('item')
         
         for item in items[:5]: # 최신 5개
-            title = item.title.text.strip()
-            # 제목 끝에 붙는 신문사 이름 제거 (예: - 과학기술정보통신부)
-            clean_title = title.split(' - ')[0]
-            link = item.link.text
-            pub_date = item.pubDate.text[:16]
+            title_tag = item.find('title')
+            link_tag = item.find('link')
+            date_tag = item.find('pubdate')
             
-            msit_list.append({
-                "카테고리": "정부(과기부)",
-                "기사제목": clean_title,
-                "발행일": pub_date,
-                "링크": link
-            })
+            if title_tag and link_tag:
+                title = title_tag.get_text().split(' - ')[0]
+                link = link_tag.get_text()
+                pub_date = date_tag.get_text()[:16] if date_tag else "최근"
+                
+                msit_list.append({
+                    "카테고리": "정부(과기부)",
+                    "기사제목": title,
+                    "발행일": pub_date,
+                    "링크": link
+                })
     except Exception as e:
-        print(f"⚠️ 우회 수집 중 오류: {e}")
+        print(f"⚠️ 과기부 우회 수집 중 참고용 메시지: {e}")
     return msit_list
 
 # --- 메인 실행 ---
@@ -75,6 +79,7 @@ if all_data:
     df = pd.DataFrame(all_data)
     df.insert(0, "수집일", collection_date)
     df.to_excel("news_list.xlsx", index=False)
-    print(f"✅ 수집 완료! 과기부 소식 포함 총 {len(all_data)}건 수집되었습니다.")
+    msit_count = len([d for d in all_data if d['카테고리'] == '정부(과기부)'])
+    print(f"✅ 수집 완료! (네이버: {len(all_data)-msit_count}건, 과기부: {msit_count}건)")
 else:
     print("❌ 수집된 데이터가 없습니다.")
