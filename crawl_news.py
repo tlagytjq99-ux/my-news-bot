@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 from bs4 import BeautifulSoup
 
-# 1. 인증 정보 (네이버 API)
+# 1. 인증 정보
 client_id = os.environ.get('NAVER_CLIENT_ID')
 client_secret = os.environ.get('NAVER_CLIENT_SECRET')
 
@@ -20,7 +20,6 @@ def classify_category(title):
             return category
     return "기타"
 
-# --- 파트 1: 네이버 뉴스 수집 (기존 동일) ---
 def get_naver_news():
     news_list = []
     if not client_id or not client_secret: return news_list
@@ -40,50 +39,42 @@ def get_naver_news():
     except: pass
     return news_list
 
-# --- 파트 2: 과기부 AI 검색 결과 수집 (최신 5개) ---
-def get_msit_search_results():
+def get_msit_via_google():
+    """과기부 사이트 직접 접속 대신 구글 뉴스 RSS를 통해 우회 수집"""
     msit_list = []
-    # 사용자님이 주신 AI 검색 결과 URL
-    url = "https://www.msit.go.kr/bbs/list.do?sCode=user&mId=307&mPid=208&pageIndex=1&bbsSeqNo=94&nttSeqNo=&searchOpt=ALL&searchTxt=ai"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Referer": "https://www.msit.go.kr/"
-    }
+    # 검색어: 과학기술정보통신부 AI (최신순)
+    rss_url = "https://news.google.com/rss/search?q=site:msit.go.kr+AI&hl=ko&gl=KR&ceid=KR:ko"
     
     try:
-        res = requests.get(url, headers=headers, timeout=20)
-        if res.status_code == 200:
-            soup = BeautifulSoup(res.text, 'html.parser')
-            # 과기부 게시판 리스트의 제목 부분 탐색
-            items = soup.select('div.lst_b li')
+        res = requests.get(rss_url, timeout=15)
+        soup = BeautifulSoup(res.text, 'xml') # RSS는 xml 형식을 사용합니다
+        items = soup.find_all('item')
+        
+        for item in items[:5]: # 최신 5개
+            title = item.title.text.strip()
+            # 제목 끝에 붙는 신문사 이름 제거 (예: - 과학기술정보통신부)
+            clean_title = title.split(' - ')[0]
+            link = item.link.text
+            pub_date = item.pubDate.text[:16]
             
-            for item in items[:5]: # 최신 자료 5개만
-                title_el = item.select_one('p.tit')
-                if title_el:
-                    title = title_el.get_text(strip=True)
-                    # 상세페이지 링크 추출
-                    link_el = item.select_one('a')
-                    href = link_el['href'] if link_el else ""
-                    full_link = "https://www.msit.go.kr" + href if href.startswith('/') else url
-                    
-                    msit_list.append({
-                        "카테고리": "정부(과기부)",
-                        "기사제목": title,
-                        "발행일": "최근",
-                        "링크": full_link
-                    })
+            msit_list.append({
+                "카테고리": "정부(과기부)",
+                "기사제목": clean_title,
+                "발행일": pub_date,
+                "링크": link
+            })
     except Exception as e:
-        print(f"⚠️ 과기부 검색 수집 중 오류: {e}")
+        print(f"⚠️ 우회 수집 중 오류: {e}")
     return msit_list
 
 # --- 메인 실행 ---
 collection_date = datetime.now().strftime("%Y-%m-%d")
-all_data = get_naver_news() + get_msit_search_results()
+all_data = get_naver_news() + get_msit_via_google()
 
 if all_data:
     df = pd.DataFrame(all_data)
     df.insert(0, "수집일", collection_date)
     df.to_excel("news_list.xlsx", index=False)
-    print(f"✅ 수집 완료! (총 {len(all_data)}건 / 과기부 AI 소식 {len([d for d in all_data if d['카테고리'] == '정부(과기부)'])}건)")
+    print(f"✅ 수집 완료! 과기부 소식 포함 총 {len(all_data)}건 수집되었습니다.")
 else:
     print("❌ 수집된 데이터가 없습니다.")
