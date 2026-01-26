@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 from bs4 import BeautifulSoup
 
-# 1. 인증 정보 (GitHub Secrets 확인 필수)
+# 1. 인증 정보
 client_id = os.environ.get('NAVER_CLIENT_ID')
 client_secret = os.environ.get('NAVER_CLIENT_SECRET')
 
@@ -21,16 +21,11 @@ def classify_category(title):
             return category
     return "기타"
 
-# --- 파트 1: 네이버 뉴스 수집 ---
 def get_naver_news():
     news_list = []
-    if not client_id or not client_secret:
-        print("⚠️ 네이버 API 키가 설정되지 않았습니다.")
-        return news_list
-        
+    if not client_id or not client_secret: return news_list
     url = "https://openapi.naver.com/v1/search/news.json?query=AI&display=100&sort=sim"
     headers = {"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret}
-    
     try:
         res = requests.get(url, headers=headers, timeout=10)
         if res.status_code == 200:
@@ -42,13 +37,12 @@ def get_naver_news():
                 if cat in counts and counts[cat] < 2:
                     news_list.append({"카테고리": cat, "기사제목": title, "발행일": item['pubDate'][:16], "링크": item['link']})
                     counts[cat] += 1
-    except Exception as e:
-        print(f"⚠️ 네이버 API 수집 중 건너뜀: {e}")
+    except: pass
     return news_list
 
-# --- 파트 2: 과기정통부 보도자료 수집 ---
 def get_msit_news():
     msit_list = []
+    # 보도자료 게시판 URL
     url = "https://www.msit.go.kr/bbs/list.do?sCode=user&mPid=217&mId=113"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     
@@ -56,37 +50,39 @@ def get_msit_news():
         res = requests.get(url, headers=headers, timeout=15)
         if res.status_code == 200:
             soup = BeautifulSoup(res.text, 'html.parser')
-            # 가장 범용적인 태그 탐색
-            items = soup.find_all('li') or soup.find_all('tr')
+            # 제목이 들어있는 모든 태그를 더 유연하게 검색
+            elements = soup.select('.lst_b p.tit') or soup.select('td.left a') or soup.select('.tit')
+            
+            # 검색 키워드 확장
+            target_keywords = ["AI", "인공지능", "디지털", "데이터", "ICT", "반도체", "전략", "기술"]
+            
             count = 0
-            for item in items:
-                text = item.get_text()
-                if ("AI" in text or "인공지능" in text) and count < 2:
-                    link_tag = item.find('a')
+            for el in elements:
+                title = el.get_text().strip()
+                # 키워드 중 하나라도 포함되어 있는지 확인
+                if any(k in title for k in target_keywords):
+                    # 링크 찾기 (부모 태그나 본인 태그에서)
+                    link_tag = el if el.name == 'a' else el.find_parent('a') or el.select_one('a')
+                    if not link_tag:
+                        # p.tit 같은 경우 바로 옆이나 부모 근처에 a태그가 있음
+                        link_tag = el.find_previous('a') or el.find_next('a')
+
                     if link_tag and link_tag.has_attr('href'):
                         href = link_tag['href']
-                        link = "https://www.msit.go.kr" + href if not href.startswith('http') else href
-                        title = link_tag.get_text().strip() or "과기부 보도자료"
-                        msit_list.append({"카테고리": "정부(과기부)", "기사제목": title, "발행일": "최근", "링크": link})
+                        full_link = "https://www.msit.go.kr" + href if href.startswith('/') else href
+                        msit_list.append({"카테고리": "정부(과기부)", "기사제목": title, "발행일": "최근", "링크": full_link})
                         count += 1
+                        if count >= 2: break
     except Exception as e:
-        print(f"⚠️ 과기부 수집 중 건너뜀: {e}")
+        print(f"과기부 상세 오류: {e}")
     return msit_list
 
 # --- 메인 실행 ---
-try:
-    collection_date = datetime.now().strftime("%Y-%m-%d")
-    all_data = get_naver_news() + get_msit_news()
+collection_date = datetime.now().strftime("%Y-%m-%d")
+all_data = get_naver_news() + get_msit_news()
 
-    if all_data:
-        df = pd.DataFrame(all_data)
-        df.insert(0, "수집일", collection_date)
-        df.to_excel("news_list.xlsx", index=False)
-        print(f"✅ 성공: {len(all_data)}개의 데이터를 저장했습니다.")
-    else:
-        # 빈 데이터라도 엑셀은 만들어야 에러가 안 남
-        df = pd.DataFrame(columns=["수집일", "카테고리", "기사제목", "발행일", "링크"])
-        df.to_excel("news_list.xlsx", index=False)
-        print("⚠️ 수집된 데이터가 없어 빈 파일을 생성했습니다.")
-except Exception as e:
-    print(f"❌ 최종 실행 오류: {e}")
+if all_data:
+    df = pd.DataFrame(all_data)
+    df.insert(0, "수집일", collection_date)
+    df.to_excel("news_list.xlsx", index=False)
+    print(f"✅ 수집 완료! 총 {len(all_data)}건 (과기부: {len([d for d in all_data if d['카테고리'] == '정부(과기부)'])}건)")
