@@ -1,81 +1,58 @@
-import os
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
+import requests
+from bs4 import BeautifulSoup
 import pandas as pd
-import datetime
-import time
+from datetime import datetime
 
-# 1. 브라우저 설정 (차단 방지 최적화)
-chrome_options = Options()
-chrome_options.add_argument("--headless")
-chrome_options.add_argument("--no-sandbox")
-chrome_options.add_argument("--disable-dev-shm-usage")
-# 가짜 신분증(User-Agent) 강화
-chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-chrome_options.add_experimental_option('useAutomationExtension', False)
+# 1. 네이버 뉴스 검색 주소 (AI 키워드, 최신순)
+url = "https://search.naver.com/search.naver?where=news&query=AI&sm=tab_opt&sort=1"
 
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+# 2. 사람처럼 보이게 하는 최소한의 설정 (헤더)
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
 
 try:
-    # 2. 접속 시도 (AI 키워드 최신순)
-    keyword = "AI"
-    url = f"https://search.naver.com/search.naver?where=news&query={keyword}&sm=tab_opt&sort=1"
-    driver.get(url)
-    
-    # 페이지 로딩을 기다리며 넉넉히 대기
-    time.sleep(7) 
+    response = requests.get(url, headers=headers)
+    soup = BeautifulSoup(response.text, 'html.parser')
 
-    news_data = []
-    
-    # 3. 뉴스 아이템 탐색 (더 유연한 방식)
-    # 네이버 뉴스의 각 칸을 의미하는 여러 가지 클래스명을 다 시도합니다.
-    items = driver.find_elements(By.CSS_SELECTOR, "li.bx, .news_wrap, .news_area")
+    # 3. 뉴스 아이템 찾기
+    news_items = soup.select('.news_wrap')
+    data = []
 
-    for item in items:
-        try:
-            # 제목과 링크 찾기
-            title_el = item.find_element(By.CSS_SELECTOR, "a.news_tit")
-            title = title_el.text.strip()
-            link = title_el.get_attribute('href')
-            
-            # 날짜(발행일) 찾기 - 여러 위치를 다 뒤집니다.
-            try:
-                # info_group 안의 info 클래스 중 날짜 형태인 것을 찾음
-                info_els = item.find_elements(By.CSS_SELECTOR, ".info_group .info")
-                # 보통 두 번째 info가 날짜인 경우가 많음
-                date_text = info_els[-1].text.strip() if info_els else "날짜미상"
-            except:
-                date_text = "날짜미상"
+    for item in news_items:
+        # 기사 제목과 링크
+        title_el = item.select_one('.news_tit')
+        if not title_el: continue
+        
+        title = title_el.get_text(strip=True)
+        link = title_el['href']
+        
+        # 발행일 (info 클래스 중 날짜 형식을 가진 것 추출)
+        info_els = item.select('.info_group .info')
+        # 보통 언론사 이름 다음에 날짜가 나오므로 마지막 요소를 가져옵/니다.
+        date_text = info_els[-1].get_text(strip=True) if info_els else "날짜미상"
 
-            # 데이터 저장 (제목이 있고 광고가 아닌 경우)
-            if title and "static/channelPromotion" not in link:
-                if not any(d['기사제목'] == title for d in news_data):
-                    news_data.append({
-                        "수집일": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "발행일": date_text,
-                        "기사제목": title,
-                        "링크": link
-                    })
-        except:
+        # 광고성 링크 제외
+        if "static/channelPromotion" in link:
             continue
-            
-        if len(news_data) >= 10:
+
+        data.append({
+            "수집일": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "발행일": date_text,
+            "기사제목": title,
+            "링크": link
+        })
+
+        if len(data) >= 10:
             break
 
-    # 4. 결과 저장 및 로그 출력
-    if news_data:
-        df = pd.DataFrame(news_data)
+    # 4. 엑셀 저장
+    if data:
+        df = pd.DataFrame(data)
         df.to_excel("news_list.xlsx", index=False)
-        print(f"✅ 성공! {len(news_data)}개의 뉴스를 엑셀로 저장했습니다.")
+        print(f"✅ 성공! {len(data)}개의 뉴스를 수집했습니다.")
     else:
-        # 실패 시 로봇이 본 화면 제목 출력 (디버깅용)
-        print(f"❌ 실패: 페이지 내용을 읽지 못했습니다. (접속된 페이지 제목: {driver.title})")
+        print("❌ 여전히 데이터를 찾지 못했습니다. 네이버가 접근을 일시 차단했을 수 있습니다.")
 
 except Exception as e:
     print(f"⚠️ 에러 발생: {e}")
-finally:
-    driver.quit()
