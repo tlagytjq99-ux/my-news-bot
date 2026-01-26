@@ -18,10 +18,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests pandas openpyxl lxml
+          python -m pip install --upgrade pip
+          # requirements.txt에 적힌 모든 라이브러리를 설치합니다.
+          pip install -r requirements.txt
 
       - name: Run Script
-        # 이 부분이 핵심! 금고(Secrets)에 저장한 값을 로봇에게 전달합니다.
         env:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
