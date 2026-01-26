@@ -18,52 +18,48 @@ driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), opti
 
 try:
     keyword = "AI"
-    # 최신순 정렬 주소
+    # 최신순 정렬
     url = f"https://search.naver.com/search.naver?where=news&query={keyword}&sm=tab_opt&sort=1"
     driver.get(url)
     time.sleep(5) 
 
     news_data = []
-    
-    # [수정 포인트] 특정 클래스 대신 '뉴스 리스트' 구역 전체에서 링크를 찾습니다.
-    # 보통 뉴스 제목은 nso_SRE 혹은 news_tit 클래스를 포함한 a 태그입니다.
-    # 하지만 더 확실하게 하기 위해 '뉴스 영역' 전체를 타겟팅합니다.
-    links = driver.find_elements(By.CSS_SELECTOR, "a")
+    # 제외하고 싶은 문구들
+    exclude_keywords = ['언론사 선정', '구독하세요', '심층기획', '네이버 메인에서']
 
-    for link in links:
-        title = link.text.strip()
-        href = link.get_attribute('href')
+    # 낚싯대: 뉴스 기사 제목의 공통 클래스인 'news_tit'을 먼저 찾고, 없으면 'a' 태그 전체 탐색
+    items = driver.find_elements(By.CLASS_NAME, "news_tit")
+    
+    if not items:
+        items = driver.find_elements(By.CSS_SELECTOR, "a")
+
+    for item in items:
+        title = item.text.strip()
+        href = item.get_attribute('href')
         
-        # 기사 제목의 특징: 글자 수가 어느 정도 있고, 링크가 길며, 특정 키워드를 피함
-        if len(title) > 15 and href and "news.naver.com" in href:
-            # 중복 제거
-            if not any(d['기사제목'] == title for d in news_data):
-                news_data.append({
-                    "수집일": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "기사제목": title,
-                    "링크": href
-                })
+        # 1. 제목이 너무 짧지 않고
+        # 2. 링크가 있고
+        # 3. 제외 키워드가 제목에 들어있지 않으며
+        # 4. 홍보용 링크(channelPromotion)가 아닌 경우만 수집
+        if len(title) > 15 and href and "channelPromotion" not in href:
+            if not any(key in title for key in exclude_keywords):
+                if not any(d['기사제목'] == title for d in news_data):
+                    news_data.append({
+                        "수집일": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "기사제목": title,
+                        "링크": href
+                    })
         
         if len(news_data) >= 10:
             break
-
-    # 만약 위 방법으로도 못 찾았다면 (비상용)
-    if not news_data:
-        items = driver.find_elements(By.CLASS_NAME, "news_tit")
-        for item in items:
-            news_data.append({
-                "수집일": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "기사제목": item.text.strip(),
-                "링크": item.get_attribute('href')
-            })
 
     if news_data:
         df = pd.DataFrame(news_data)
         file_name = "news_list.xlsx"
         df.to_excel(file_name, index=False)
-        print(f"✅ {len(news_data)}개 뉴스 수집 성공!")
+        print(f"✅ 진짜 뉴스 {len(news_data)}개 수집 성공!")
     else:
-        print("❌ 여전히 데이터를 찾지 못했습니다. 구조 확인이 필요합니다.")
+        print("❌ 유효한 뉴스 기사를 찾지 못했습니다.")
 
 except Exception as e:
     print(f"오류 발생: {e}")
