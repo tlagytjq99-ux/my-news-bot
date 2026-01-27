@@ -3,13 +3,14 @@ name: OpenAI News Crawling
 on:
   schedule:
     - cron: '30 0 * * *' # 매일 한국 시간 오전 9시 30분 실행
-  workflow_dispatch:      # 수동 실행 버튼 활성화
+  workflow_dispatch:      # 수동 실행 버튼 활성화 (테스트용)
 
 jobs:
   run-openai:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -19,15 +20,18 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas openpyxl playwright
+          # 핵심: requests를 추가하고, 사용하지 않는 playwright는 제외하여 속도를 높였습니다.
+          pip install requests pandas openpyxl
 
       - name: Run OpenAI Script
-        run: python crawl_openai.py  # 실행할 파일명 확인!
+        run: python crawl_openai.py
 
       - name: Commit and Push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # 생성된 엑셀 파일을 스테이징합니다.
           git add openai_news.xlsx
-          git commit -m "Update OpenAI news" || echo "No changes to commit"
+          # 변경사항이 있을 때만 커밋하고 푸시합니다.
+          git commit -m "Update OpenAI news: $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
           git push
