@@ -23,9 +23,9 @@ def crawl_openai_rss():
         return
 
     news_items = []
-    # 전체 뉴스를 다 가져오려면 [:5]를 지우거나 숫자를 키우세요.
-    items = root.findall(".//item")
-    print(f"3. 총 {len(items)}개의 뉴스 번역 및 수집 시작...")
+    # [핵심] 최신 뉴스 10개만 선택 (818개 전체 번역 방지)
+    items = root.findall(".//item")[:10]
+    print(f"3. 최신 뉴스 {len(items)}개의 번역 및 수집 시작...")
 
     for i, item in enumerate(items):
         title_en = item.find("title").text
@@ -41,16 +41,15 @@ def crawl_openai_rss():
 
         # 한글 번역
         try:
-            print(f"   - {i+1}/{len(items)} 번역 중...")
+            print(f"   - {i+1}/{len(items)} 번역 중: {title_en[:30]}...")
             title_ko = translator.translate(title_en, src='en', dest='ko').text
-            # 번역 속도가 너무 빠르면 구글에서 차단할 수 있으므로 약간의 간격을 둡니다.
-            if i % 3 == 0: time.sleep(1) 
+            time.sleep(1) # 안정적인 번역을 위한 1초 휴식
         except Exception as e:
             print(f"   - 번역 실패 ({e})")
             title_ko = title_en
 
         news_items.append({
-            "수집일": collect_date,   # <-- 새로 추가된 항목
+            "수집일": collect_date,
             "발행일": pub_date,
             "기관": "OpenAI",
             "원문 제목": title_en,
@@ -59,7 +58,7 @@ def crawl_openai_rss():
         })
     
     df = pd.DataFrame(news_items)
-    # 컬럼 순서 고정 (보기 좋게 배치)
+    # 컬럼 순서 고정
     df = df[["수집일", "발행일", "기관", "원문 제목", "한글 번역 제목", "링크"]]
     df.to_excel("openai_news.xlsx", index=False)
     print("4. 모든 과정 완료 및 엑셀 저장 성공!")
