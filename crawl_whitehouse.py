@@ -31,7 +31,8 @@ def crawl_whitehouse_ai():
     # <a> 태그 중 /briefing-room/ 경로를 포함하는 기사 링크들을 찾습니다.
     articles = soup.find_all('a', href=True)
     
-    ai_keywords = ["AI", "Artificial Intelligence", "Technology", "Cyber", "Quantum", "Semiconductor", "Digital", "Security"]
+    # 'Science', 'Data', 'Space' 등 기술 전반으로 확장
+    ai_keywords = ["AI", "Artificial Intelligence", "Technology", "Cyber", "Quantum", "Semiconductor", "Digital", "Security", "Science", "Data", "Space", "Internet", "Innovation"]
     seen_titles = set()
     
     print(f"3. AI 관련 뉴스 필터링 시작...")
