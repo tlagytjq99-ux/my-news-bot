@@ -1,0 +1,32 @@
+name: AI Trend Robot
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # 매주 월요일 아침 9시(한국시간 기준) 실행
+  workflow_dispatch:      # 원할 때 수동으로 돌릴 수 있는 버튼 생성
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 파이썬 세팅
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 크롤링 도구 설치 (Crawl4AI & Playwright)
+        run: |
+          pip install crawl4ai playwright
+          python -m playwright install chromium --with-deps
+
+      - name: 크롤링 시작
+        run: python main.py
+
+      - name: 결과물(MD파일) 저장
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Trend-Reports
+          path: "*.md"
