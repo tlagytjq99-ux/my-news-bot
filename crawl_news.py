@@ -7,6 +7,16 @@ from datetime import datetime
 client_id = os.environ.get('NAVER_CLIENT_ID')
 client_secret = os.environ.get('NAVER_CLIENT_SECRET')
 
+def format_date(raw_date):
+    """네이버 pubDate를 yyyy-mm-dd 형식으로 변환"""
+    try:
+        # 네이버 날짜 예시: "Tue, 27 Jan 2026 10:00:00 +0900"
+        # 앞의 요일과 뒤의 시간대를 제외한 날짜 부분만 파싱
+        date_obj = datetime.strptime(raw_date[5:16], "%d %b %Y")
+        return date_obj.strftime("%Y-%m-%d")
+    except:
+        return raw_date[:10] # 실패 시 앞부분 날짜만이라도 반환
+
 def classify_category(title):
     """뉴스 제목을 분석하여 카테고리 분류"""
     categories = {
@@ -40,7 +50,7 @@ def get_naver_news_general():
                     news_list.append({
                         "카테고리": cat, 
                         "기사제목": title, 
-                        "발행일": item['pubDate'][:16], 
+                        "발행일": format_date(item['pubDate']), # 날짜 변환 적용
                         "링크": item['link']
                     })
                     counts[cat] += 1
@@ -48,9 +58,8 @@ def get_naver_news_general():
     return news_list
 
 def get_msit_news_via_api():
-    """네이버 API를 통해 과기정통부 공식 보도자료 성격의 뉴스 수집"""
+    """네이버 API를 통해 과기정통부 뉴스 수집"""
     msit_list = []
-    # 검색어: "과학기술정보통신부"가 포함된 AI 관련 뉴스
     url = "https://openapi.naver.com/v1/search/news.json?query=과학기술정보통신부+AI&display=20&sort=date"
     headers = {"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret}
     
@@ -58,12 +67,12 @@ def get_msit_news_via_api():
         res = requests.get(url, headers=headers, timeout=10)
         if res.status_code == 200:
             items = res.json().get('items', [])
-            for item in items[:5]: # 최신 5개 추출
+            for item in items[:5]:
                 title = item['title'].replace("<b>","").replace("</b>","").replace("&quot;",'"').replace("&amp;","&")
                 msit_list.append({
                     "카테고리": "정부(과기부)",
                     "기사제목": title,
-                    "발행일": item['pubDate'][:16],
+                    "발행일": format_date(item['pubDate']), # 날짜 변환 적용
                     "링크": item['link']
                 })
     except: pass
@@ -73,7 +82,6 @@ def get_msit_news_via_api():
 if __name__ == "__main__":
     collection_date = datetime.now().strftime("%Y-%m-%d")
     
-    # 두 데이터 합치기
     all_data = get_naver_news_general() + get_msit_news_via_api()
 
     if all_data:
