@@ -7,54 +7,67 @@ from urllib.parse import urljoin
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 
 async def main():
-    # 🔗 [정보원 관리] 여기에 새로운 사이트를 계속 추가하세요!
+    # 1. 🔗 [정보원 정밀 타격] RSS가 아닌 실제 뉴스 목록 웹 페이지 주소
     target_sites = {
         "AI타임스": "https://www.aitimes.com/news/articleList.html?sc_section_code=S1N1",
         "벤처비트": "https://venturebeat.com/category/ai/",
         "테크크런치": "https://techcrunch.com/category/artificial-intelligence/",
         "AI뉴스(영국)": "https://www.artificialintelligence-news.com/",
-        "전자신문AI": "https://www.etnews.com/news/section.html?id1=20&id2=065",
-        "ZDNet_AI": "https://zdnet.co.kr/newskey/?lstkey=인공지능"
+        "더버지(AI)": "https://www.theverge.com/ai-artificial-intelligence",
+        "전자신문AI": "https://www.etnews.com/news/section.html?id1=20&id2=065"
     }
 
-    browser_config = BrowserConfig(browser_type="chromium", headless=True)
-    # 로딩 시간을 충분히 주어 누락 방지
-    run_config = CrawlerRunConfig(wait_for="body", wait_for_timeout=20000)
+    browser_config = BrowserConfig(
+        browser_type="chromium", 
+        headless=True,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
+    
+    # Playwright가 페이지 자바스크립트를 실행할 시간을 충분히 줍니다.
+    run_config = CrawlerRunConfig(
+        wait_for="body", 
+        wait_for_timeout=20000,
+        delay_before_return_html=2.0 
+    )
     
     final_data = []
     today = datetime.now().strftime("%Y-%m-%d")
 
-    # 🚫 강화된 필터링 키워드 (메뉴, 로고, 카테고리 등 제거)
+    # 🚫 노이즈 차단 키워드 리스트
     exclude_keywords = [
         "바로가기", "로그인", "회원가입", "copyright", "terms", "privacy", 
-        "newsletter", "brand studio", "battlefield", "advertising", "contact",
-        "policy", "media", "entertainment", "subscribe", "events"
+        "newsletter", "advertising", "contact", "policy", "subscribe",
+        "media", "entertainment", "startup battlefield", "skip to content"
     ]
 
     async with AsyncWebCrawler(config=browser_config) as crawler:
         for site_name, url in target_sites.items():
             try:
-                print(f"📡 [{site_name}] 데이터 수집 시도...")
+                print(f"📡 [{site_name}] 뉴스 목록 분석 중...")
                 result = await crawler.arun(url=url, config=run_config)
 
                 if result.success and result.markdown:
-                    # 마크다운 내 링크 패턴 [제목](링크) 추출
-                    # 제목이 너무 짧으면 메뉴일 확률이 높으므로 25자 이상으로 필터링
-                    links = re.findall(r'\[([^\]]{25,})\]\(([^\)]+)\)', result.markdown)
+                    # [제목](링크) 패턴 추출 (제목이 최소 20자 이상인 것만)
+                    links = re.findall(r'\[([^\]]{20,})\]\(([^\)]+)\)', result.markdown)
                     
                     added = 0
                     for title, link in links:
-                        title_clean = title.replace("\n", " ").strip()
+                        # 1. 이미지 태그(![...]) 원천 차단
+                        if "![" in title: continue
                         
-                        # 1. 제외 키워드 검사
+                        # 2. 제목 정제 (불필요한 대괄호, 줄바꿈 제거)
+                        title_clean = re.sub(r'[\[\]\r\n\t]', '', title).strip()
+                        
+                        # 3. 필터링 조건 (제외 키워드 및 길이)
                         if any(kw in title_clean.lower() for kw in exclude_keywords): continue
-                        # 2. 이미지가 섞인 링크 제거 (![...])
-                        if "![" in title_clean: continue
-                        # 3. 특수문자로만 된 제목 제거
-                        if not re.search('[a-zA-Z가-힣]', title_clean): continue
-
+                        if len(title_clean) < 25: continue # 너무 짧은 메뉴형 제목 배제
+                        
+                        # 4. 링크 보정
                         full_link = urljoin(url, link)
                         
+                        # 5. 중복 기사 방지 (제목 기준)
+                        if any(d['제목'] == title_clean for d in final_data): continue
+
                         final_data.append({
                             "출처": site_name,
                             "수집일": today,
@@ -62,19 +75,25 @@ async def main():
                             "링크": full_link
                         })
                         added += 1
-                        if added >= 8: break # 사이트당 최대 8개까지
+                        if added >= 8: break # 사이트당 최대 8개 기사 수집
                     
                     print(f"✅ {site_name}: {added}개 뉴스 확보")
             except Exception as e:
-                print(f"❌ {site_name} 오류: {e}")
+                print(f"❌ {site_name} 수집 실패: {e}")
 
-    # 저장 로직
+    # 2. 💾 CSV 결과 저장
+    file_name = 'ai_trend_report.csv'
     if final_data:
-        with open('ai_trend_report.csv', 'w', newline='', encoding='utf-8-sig') as f:
+        with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.DictWriter(f, fieldnames=["출처", "수집일", "제목", "링크"])
             writer.writeheader()
             writer.writerows(final_data)
-        print(f"🎉 필터링 완료! 총 {len(final_data)}개의 뉴스가 저장되었습니다.")
+        print(f"🎉 리포트 생성 완료! (총 {len(final_data)}건)")
+    else:
+        # 데이터가 없을 때도 빈 파일은 생성하여 에러 방지
+        with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
+            f.write("출처,수집일,제목,링크\n-,2026-01-28,수집된 데이터가 없습니다,-")
+        print("⚠️ 수집된 데이터가 없어 빈 파일을 생성했습니다.")
 
 if __name__ == "__main__":
     asyncio.run(main())
