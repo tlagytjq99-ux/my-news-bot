@@ -8,30 +8,30 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 async def get_exact_date(crawler, url, config):
     """기사 상세 페이지에서 실제 발행일을 정밀 추출합니다."""
     try:
+        # AI타임스 등 까다로운 사이트를 위해 HTML 구조를 직접 분석
         result = await crawler.arun(url=url, config=config)
-        if result.success and result.markdown:
-            # 1. AI타임스 전용: '기사승인' 또는 '등록' 문구 옆 날짜 찾기
-            ai_times_match = re.search(r'(?:기사승인|등록|수정)\s*[:\s]*(\d{4}[-./]\d{1,2}[-./]\d{1,2})', result.markdown)
-            if ai_times_match:
-                return ai_times_match.group(1).replace('.', '-').replace('/', '-')
+        if result.success:
+            content = result.markdown
+            
+            # 1. AI타임스 특화 패턴: '승인 202X.XX.XX' 또는 '202X.XX.XX XX:XX'
+            ai_pattern = re.search(r'(\d{4}\.\d{2}\.\d{2})\s+\d{2}:\d{2}', content)
+            if ai_pattern:
+                return ai_pattern.group(1).replace('.', '-')
 
-            # 2. 일반 숫자형 날짜 (YYYY-MM-DD)
-            date_match = re.search(r'(\d{4}[-./]\d{1,2}[-./]\d{1,2})', result.markdown)
+            # 2. 일반 숫자 패턴 (YYYY-MM-DD)
+            date_match = re.search(r'(\d{4}[-./]\d{2}[-./]\d{2})', content)
             if date_match:
                 return date_match.group(1).replace('.', '-').replace('/', '-')
             
-            # 3. 영문형 날짜 (백악관/해외 정부기관용: January 20, 2026)
-            eng_match = re.search(r'([A-Z][a-z]+ \d{1,2}, \d{4})', result.markdown)
+            # 3. 영문 날짜 변환 (백악관 등)
+            eng_match = re.search(r'([A-Z][a-z]+ \d{1,2}, \d{4})', content)
             if eng_match:
-                try:
-                    dt = datetime.strptime(eng_match.group(1), "%B %d, %Y")
-                    return dt.strftime("%Y-%m-%d")
-                except: pass
+                dt = datetime.strptime(eng_match.group(1), "%B %d, %Y")
+                return dt.strftime("%Y-%m-%d")
     except: pass
-    return "확인불가"
+    return "날짜확인필요"
 
 async def main():
-    # ✅ 여기에 정부기관 URL을 마음껏 추가해 보세요!
     target_sites = {
         "AI타임스": "https://www.aitimes.com/news/articleList.html?sc_section_code=S1N1",
         "벤처비트": "https://venturebeat.com/category/ai/",
@@ -39,42 +39,47 @@ async def main():
         "백악관(AI)": "https://www.whitehouse.gov/briefing-room/statements-releases/"
     }
 
+    # 🎯 정부 기관에서 'AI' 관련 내용만 뽑기 위한 키워드
+    ai_keywords = ['ai', 'intelligence', 'tech', 'digital', 'data', 'algorithm', 'cyber', '인공지능', '데이터', '디지털']
+
     browser_config = BrowserConfig(browser_type="chromium", headless=True)
-    run_config = CrawlerRunConfig(wait_for="body", wait_for_timeout=15000)
+    run_config = CrawlerRunConfig(wait_for="body", wait_for_timeout=20000)
     
     final_data = []
     today_str = datetime.now().strftime("%Y-%m-%d")
 
     async with AsyncWebCrawler(config=browser_config) as crawler:
         for site_name, url in target_sites.items():
-            print(f"📡 [{site_name}] 분석 시작...")
+            print(f"📡 [{site_name}] 데이터 정밀 스캔 중...")
             list_result = await crawler.arun(url=url, config=run_config)
 
             if list_result.success and list_result.markdown:
-                # 제목이 포함된 링크 추출
                 links = re.findall(r'\[([^\]]{25,})\]\(([^\)]+)\)', list_result.markdown)
                 
                 count = 0
                 for title, link in links:
+                    title_clean = re.sub(r'[\[\]\r\n\t]', '', title).strip()
+                    
+                    # 🔍 정부 기관(백악관)의 경우 AI 키워드가 없으면 건너뜀
+                    if site_name == "백악관(AI)":
+                        if not any(kw in title_clean.lower() for kw in ai_keywords):
+                            continue
+
+                    # 노이즈 필터링
                     if "![" in title or any(ext in link.lower() for ext in ['.jpg', '.png', '.jpeg']): continue
                     
                     full_link = urljoin(url, link)
-                    title_clean = re.sub(r'[\[\]\r\n\t]', '', title).strip()
-                    
-                    # 중복 체크
                     if any(d['제목'] == title_clean for d in final_data): continue
 
-                    # 📅 상세 페이지 깊이 분석
-                    print(f"   🔎 날짜 매칭 중: {title_clean[:15]}...")
+                    # 📅 상세 페이지 깊이 분석 (날짜 찾기)
+                    print(f"   🔎 날짜 추출 중: {title_clean[:15]}...")
                     exact_date = await get_exact_date(crawler, full_link, run_config)
                     
-                    # 끝까지 못 찾으면 URL에서 추출 시도
-                    if exact_date == "확인불가":
-                        url_date = re.search(r'/(\d{4})/(\d{1,2})/(\d{1,2})/', full_link)
+                    # URL에서 날짜 재검증 (테크크런치 방식)
+                    if exact_date == "날짜확인필요":
+                        url_date = re.search(r'/(\d{4})/(\d{2})/(\d{2})/', full_link)
                         if url_date:
-                            exact_date = f"{url_date.group(1)}-{url_date.group(2).zfill(2)}-{url_date.group(3).zfill(2)}"
-                        else:
-                            exact_date = today_str # 최후의 수단
+                            exact_date = f"{url_date.group(1)}-{url_date.group(2)}-{url_date.group(3)}"
 
                     final_data.append({
                         "출처": site_name,
@@ -84,7 +89,7 @@ async def main():
                         "링크": full_link
                     })
                     count += 1
-                    if count >= 7: break # 사이트당 7개씩
+                    if count >= 8: break
 
     # CSV 저장
     file_name = 'ai_trend_report.csv'
@@ -92,7 +97,7 @@ async def main():
         writer = csv.DictWriter(f, fieldnames=["출처", "수집일", "발행일", "제목", "링크"])
         writer.writeheader()
         writer.writerows(final_data)
-    print(f"🎉 모든 날짜 교정 완료! 파일이 생성되었습니다.")
+    print(f"🎉 교정 완료! 이제 AI타임스 날짜와 백악관 필터가 적용되었습니다.")
 
 if __name__ == "__main__":
     asyncio.run(main())
