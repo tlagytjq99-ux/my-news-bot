@@ -29,4 +29,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AI-Trend-Reports
-          path: "*.csv"
+          path: ai_trend_report.csv  # <--- 이름을 직접 지정하세요
+          if-no-files-found: error    # <--- 파일이 없으면 아예 에러를 내서 알 수 있게 함
