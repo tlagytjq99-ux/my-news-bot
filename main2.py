@@ -6,21 +6,20 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.extraction_strategy import JsonCssExtractionStrategy
 
 async def main():
-    # 1. 브라우저 설정 (에러 원인인 extra_http_headers 제거)
     browser_config = BrowserConfig(
         browser_type="chromium",
         headless=True,
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     )
 
-    # 2. 실행 설정
+    # 1. 실행 설정 조정 (기다리는 시간을 조금 줄이고 에러 시 넘어가게 함)
     run_config = CrawlerRunConfig(
-        wait_for="article, h2, h3, .list-block", 
+        wait_for="article, h2, h3", 
+        wait_for_timeout=20000, # 20초만 기다리고 안 나오면 패스
         cache_mode=CacheMode.BYPASS,
-        delay_before_return_html=2.0 
+        delay_before_return_html=1.0 
     )
 
-    # 3. 범용적인 추출 규칙
     schema = {
         "name": "AI_News_Extractor",
         "baseSelector": "article, .item, tr, li, .list-block", 
@@ -43,45 +42,50 @@ async def main():
 
     async with AsyncWebCrawler(config=browser_config) as crawler:
         for url in urls:
-            print(f"📡 {url} 수집 시작 (Playwright 가동)...")
-            
-            result = await crawler.arun(
-                url=url,
-                config=run_config,
-                extraction_strategy=extraction_strategy
-            )
+            try: # 💡 안전장치 추가: 에러 나도 멈추지 마!
+                print(f"📡 {url} 수집 시작...")
+                result = await crawler.arun(
+                    url=url,
+                    config=run_config,
+                    extraction_strategy=extraction_strategy
+                )
 
-            if result.success and result.extracted_content:
-                items = json.loads(result.extracted_content)
-                count = 0
-                for item in items:
-                    title = item.get("title", "").strip()
-                    link = item.get("link", "")
-                    
-                    if len(title) < 10 or not link: continue
-                    
-                    # 링크 주소 보정
-                    if not link.startswith('http'):
+                if result.success and result.extracted_content:
+                    items = json.loads(result.extracted_content)
+                    count = 0
+                    for item in items:
+                        title = item.get("title", "").strip()
+                        link = item.get("link", "")
+                        if len(title) < 10 or not link: continue
+                        
                         from urllib.parse import urljoin
                         full_link = urljoin(url, link)
-                    else:
-                        full_link = link
 
-                    final_data.append({
-                        "수집일": today,
-                        "발행일": today,
-                        "제목": title,
-                        "링크": full_link
-                    })
-                    count += 1
-                    if count >= 5: break
-                print(f"✅ {url}: {count}개 수집 완료")
+                        final_data.append({
+                            "수집일": today,
+                            "발행일": today,
+                            "제목": title,
+                            "링크": full_link
+                        })
+                        count += 1
+                        if count >= 5: break
+                    print(f"✅ {url}: {count}개 완료")
+                else:
+                    print(f"⚠️ {url}: 추출 결과 없음")
 
-    # 결과물 저장
-    with open('ai_trend_report.csv', 'w', newline='', encoding='utf-8-sig') as f:
-        writer = csv.DictWriter(f, fieldnames=["수집일", "발행일", "제목", "링크"])
-        writer.writeheader()
-        writer.writerows(final_data)
+            except Exception as e:
+                print(f"❌ {url} 작업 중 에러 발생 (건너뜁니다): {e}")
+                continue
+
+    # 2. 에러가 났어도 지금까지 수집된 건 무조건 저장
+    if final_data:
+        with open('ai_trend_report.csv', 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.DictWriter(f, fieldnames=["수집일", "발행일", "제목", "링크"])
+            writer.writeheader()
+            writer.writerows(final_data)
+        print(f"🎉 성공! 총 {len(final_data)}개의 뉴스를 저장했습니다.")
+    else:
+        print("😭 저장할 데이터가 하나도 없습니다.")
 
 if __name__ == "__main__":
     asyncio.run(main())
