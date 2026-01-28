@@ -6,26 +6,21 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.extraction_strategy import JsonCssExtractionStrategy
 
 async def main():
-    # 1. 브라우저 설정 (Playwright의 강력한 기능들을 여기서 세팅)
+    # 1. 브라우저 설정 (에러 원인인 extra_http_headers 제거)
     browser_config = BrowserConfig(
-        browser_type="chromium", # 크롬 엔진 사용
-        headless=True,           # 화면 없이 실행 (속도 향상)
-        # 중요: 진짜 사람처럼 보이게 만드는 '지문(Fingerprint)' 설정
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        extra_http_headers={"Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"}
+        browser_type="chromium",
+        headless=True,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     )
 
-    # 2. 크롤링 실행 설정 (Playwright가 사이트 접속 시 행동할 지침)
+    # 2. 실행 설정
     run_config = CrawlerRunConfig(
-        # 데이터가 뜰 때까지 충분히 기다림 (Playwright의 대기 기능)
         wait_for="article, h2, h3, .list-block", 
-        check_all_iframes=True,  # 숨겨진 프레임까지 확인
-        cache_mode=CacheMode.BYPASS, # 매번 새로 고침해서 최신 데이터 수집
-        # 페이지 로딩 후 2초간 더 대기 (자바스크립트 실행 완료 기다림)
+        cache_mode=CacheMode.BYPASS,
         delay_before_return_html=2.0 
     )
 
-    # 3. 범용적인 뉴스 추출 규칙
+    # 3. 범용적인 추출 규칙
     schema = {
         "name": "AI_News_Extractor",
         "baseSelector": "article, .item, tr, li, .list-block", 
@@ -37,7 +32,6 @@ async def main():
     }
     extraction_strategy = JsonCssExtractionStrategy(schema)
 
-    # 수집 대상 AI 뉴스 사이트
     urls = [
         "https://www.aitimes.com/news/articleList.html?sc_section_code=S1N1",
         "https://venturebeat.com/category/ai/",
@@ -66,8 +60,13 @@ async def main():
                     
                     if len(title) < 10 or not link: continue
                     
-                    full_link = link if link.startswith('http') else f"{url.split('/')[0]}//{url.split('/')[2]}{link}"
-                    
+                    # 링크 주소 보정
+                    if not link.startswith('http'):
+                        from urllib.parse import urljoin
+                        full_link = urljoin(url, link)
+                    else:
+                        full_link = link
+
                     final_data.append({
                         "수집일": today,
                         "발행일": today,
