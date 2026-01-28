@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import os
+import re
 from datetime import datetime
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 
@@ -20,45 +21,58 @@ async def main():
     final_data = []
     today = datetime.now().strftime("%Y-%m-%d")
 
+    # 🚫 제외할 단어 목록 (이미지에 나온 노이즈들)
+    exclude_keywords = [
+        "바로가기", "logo", "로그인", "회원가입", "menu", "skip", 
+        "copyright", "terms", "privacy", "owner", "click here",
+        "english news", "future energy"
+    ]
+
     async with AsyncWebCrawler(config=browser_config) as crawler:
         for url in urls:
             try:
-                print(f"📡 {url} 시도 중...")
-                # 추출 전략 없이 그냥 마크다운으로 통째로 가져옵니다.
+                print(f"📡 {url} 정밀 필터링 중...")
                 result = await crawler.arun(url=url, bypass_cache=True)
 
                 if result.success and result.markdown:
-                    # 마크다운 안에서 링크 형태 [제목](주소) 만 골라냅니다.
-                    import re
-                    links = re.findall(r'\[([^\]]{10,})\]\(([^\)]+)\)', result.markdown)
+                    # [제목](링크) 패턴 추출
+                    links = re.findall(r'\[([^\]]{15,})\]\(([^\)]+)\)', result.markdown)
                     
                     added = 0
                     for title, link in links:
-                        if "http" not in link and not link.startswith("/"): continue
-                        if any(x in title.lower() for x in ["terms", "privacy", "about", "contact"]): continue
+                        title_clean = title.strip()
+                        
+                        # 필터링 조건 1: 너무 짧은 제목 제외
+                        if len(title_clean) < 15: continue
+                        # 필터링 조건 2: 제외 단어가 포함된 경우 패스
+                        if any(kw in title_clean.lower() for kw in exclude_keywords): continue
+                        # 필터링 조건 3: 이미지가 포함된 마크다운 제외
+                        if "![" in title_clean: continue
+                        
+                        full_link = link if link.startswith("http") else url + link
                         
                         final_data.append({
                             "수집일": today,
                             "발행일": today,
-                            "제목": title.strip(),
-                            "링크": link if link.startswith("http") else url + link
+                            "제목": title_clean,
+                            "링크": full_link
                         })
                         added += 1
                         if added >= 5: break
-                    print(f"✅ {url}: {added}개 발견")
+                    print(f"✅ {url}: {added}개 뉴스 확보")
             except Exception as e:
                 print(f"❌ {url} 에러: {e}")
 
-    # [핵심] 데이터가 없어도 파일을 만듭니다.
+    # 데이터가 없을 경우 대비
     if not final_data:
-        final_data.append({"수집일": today, "발행일": "-", "제목": "수집된 데이터가 없습니다. 사이트 차단을 확인하세요.", "링크": "-"})
+        final_data.append({"수집일": today, "발행일": "-", "제목": "검색 결과 없음 (필터링 기준 미달)", "링크": "-"})
 
     with open('ai_trend_report.csv', 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["수집일", "발행일", "제목", "링크"])
         writer.writeheader()
         writer.writerows(final_data)
     
-    print(f"💾 파일 저장 완료: {os.path.abspath('ai_trend_report.csv')}")
+    print(f"💾 필터링 완료! 파일이 저장되었습니다.")
 
 if __name__ == "__main__":
     asyncio.run(main())
