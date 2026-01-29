@@ -1,79 +1,76 @@
-import requests
-from bs4 import BeautifulSoup
+import asyncio
 import csv
 import os
 from datetime import datetime
-from urllib.parse import urljoin
+from playwright.async_api import async_playwright
 
-def main():
-    # 🎯 타겟: 내각부 보도발표(News Release) 전용 페이지
-    # 이곳은 구조가 비교적 일정해서 뉴스만 골라내기 좋습니다.
+async def main():
     target_url = "https://www.cao.go.jp/houdou/houdou.html"
     file_name = 'japan_ai_report.csv'
     
-    print(f"📡 [일본 내각부] 보도자료 정밀 수집 시작...")
+    print(f"📡 [일본 내각부] Playwright 가상 브라우저 가동...")
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-    }
-
-    try:
-        response = requests.get(target_url, headers=headers, timeout=20)
-        response.encoding = 'utf-8' 
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        # 💡 [핵심] 뉴스 아이템은 보통 'main_list' 클래스의 <li> 안에 있습니다.
-        # 혹은 <dt>(날짜) <dd>(제목) 구조를 찾습니다.
-        new_data = []
-        existing_titles = set()
-        if os.path.exists(file_name):
-            with open(file_name, 'r', encoding='utf-8-sig') as f:
-                reader = csv.DictReader(f)
-                for row in reader: existing_titles.add(row['제목'])
-
-        # 뉴스 본문 영역 찾기
-        content_area = soup.find('div', id='main_list') or soup.find('div', id='contents')
+    async with async_playwright() as p:
+        # 브라우저 실행 (사람처럼 보이게 설정)
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+        )
+        page = await context.new_page()
         
-        if content_area:
-            # 💡 뉴스 리스트의 <a> 태그들만 추출
-            items = content_area.find_all('a', href=True)
+        try:
+            # 페이지 접속 및 로딩 대기
+            await page.goto(target_url, wait_until="networkidle")
+            await page.wait_for_timeout(3000) # 3초 추가 대기
+
+            # 뉴스 링크들 추출
+            # 일본 내각부 보도자료 리스트의 <a> 태그들을 타겟팅
+            links = await page.query_selector_all("main a, #contents a, .main_list a")
             
+            new_data = []
+            existing_titles = set()
+            if os.path.exists(file_name):
+                with open(file_name, 'r', encoding='utf-8-sig') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader: existing_titles.add(row['제목'])
+
             count = 0
-            for a in items:
-                title = a.get_text().strip()
-                link = urljoin(target_url, a['href'])
+            for link_element in links:
+                title = await link_element.inner_text()
+                title = title.strip()
+                url = await link_element.get_attribute("href")
                 
-                # 💡 [필터링]
-                # 1. 제목에 '내각부' 같은 단순 사이트명 제외
-                # 2. 이미 수집한 제목 제외
-                # 3. 주소에 houdou(보도)나 기사 형식이 포함된 것
-                if len(title) > 15 and title not in existing_titles:
-                    if 'index.html' not in link[-10:]: # 단순 메인페이지 링크 제외
-                        
-                        print(f"   🆕 뉴스 발견: {title[:40]}...")
-                        new_data.append({
-                            "기관": "일본 내각부(CAO)",
-                            "발행일": datetime.now().strftime("%Y-%m-%d"),
-                            "제목": title,
-                            "링크": link,
-                            "수집일": datetime.now().strftime("%Y-%m-%d")
-                        })
-                        count += 1
-                        if count >= 5: break
+                if not url: continue
+                full_url = f"https://www.cao.go.jp{url}" if url.startswith("/") else url
 
-        # 💾 결과 저장
-        if new_data:
-            file_exists = os.path.exists(file_name)
-            with open(file_name, 'a', newline='', encoding='utf-8-sig') as f:
-                writer = csv.DictWriter(f, fieldnames=["기관", "발행일", "제목", "링크", "수집일"])
-                if not file_exists: writer.writeheader()
-                writer.writerows(new_data)
-            print(f"✅ 성공! {len(new_data)}건의 보도자료 수집 완료.")
-        else:
-            print("❌ 실제 뉴스 영역을 찾는 데 실패했습니다. 타겟을 다시 조정합니다.")
+                # 💡 필터링: 메뉴가 아닌 진짜 뉴스 제목처럼 긴 것만
+                if len(title) > 20 and title not in existing_titles:
+                    print(f"   🆕 발견: {title[:40]}...")
+                    new_data.append({
+                        "기관": "일본 내각부(CAO)",
+                        "발행일": datetime.now().strftime("%Y-%m-%d"),
+                        "제목": title,
+                        "링크": full_url,
+                        "수집일": datetime.now().strftime("%Y-%m-%d")
+                    })
+                    count += 1
+                    if count >= 5: break
 
-    except Exception as e:
-        print(f"❌ 에러 발생: {e}")
+            # 저장 로직
+            if new_data:
+                file_exists = os.path.exists(file_name)
+                with open(file_name, 'a', newline='', encoding='utf-8-sig') as f:
+                    writer = csv.DictWriter(f, fieldnames=["기관", "발행일", "제목", "링크", "수집일"])
+                    if not file_exists: writer.writeheader()
+                    writer.writerows(new_data)
+                print(f"✅ 성공! {len(new_data)}건의 데이터를 수집했습니다.")
+            else:
+                print("❌ 브라우저로 접속했으나 뉴스를 찾지 못했습니다.")
+
+        except Exception as e:
+            print(f"❌ 에러 발생: {e}")
+        finally:
+            await browser.close()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
