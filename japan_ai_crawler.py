@@ -37,7 +37,7 @@ def main():
 
         # AI 및 기술 관련 일본어 핵심 키워드
         # AI(인공지능), 人工知能(인공지능), デジタル(디지털), 戦略(전략), 技術(기술)
-        ai_keywords = ['AI', '人工知能', 'デジタル', '戦略', '技術', '데이터']
+        ai_keywords = ['']
 
         count = 0
         dts = news_list.find_all('dt') if news_list else []
