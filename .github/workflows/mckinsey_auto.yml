@@ -1,9 +1,9 @@
-name: McKinsey AI Report Scraper
+name: Market Intelligence Scraper
 
 on:
-  push:
-    branches: [ main ]
-  workflow_dispatch: # 수동 실행 버튼
+  workflow_dispatch: # 👈 이 버튼 설정만 남겨두었습니다. 이제 수동으로만 돌아갑니다.
+  # schedule:
+  #   - cron: '0 0 * * *' # 필요할 때 앞에 '#'을 지우면 매일 아침 자동 실행됩니다.
 
 jobs:
   build:
@@ -14,7 +14,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v4  # 👈 여기서 에러가 났던 부분을 수정했습니다!
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
@@ -30,5 +30,5 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Update McKinsey AI Report" || echo "No changes to commit"
+          git commit -m "Update Market Intelligence Report" || echo "No changes to commit"
           git push
