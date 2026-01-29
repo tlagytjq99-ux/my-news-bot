@@ -1,0 +1,38 @@
+name: White House AI Scraper
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # 매일 아침 9시 (KST) 자동 실행
+  workflow_dispatch:      # 필요할 때 수동으로 바로 실행 버튼 활성화
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write    # 결과물을 저장(Push)하기 위한 권한
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install crawl4ai requests pandas
+          # 🎯 Crawl4AI를 위한 브라우저 설치 (핵심)
+          python -m playwright install chromium --with-deps
+
+      - name: Run Scraper
+        run: python whitehouse_ai_crawler.py # 파일 이름이 맞는지 확인하세요!
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add whitehouse_ai_report.csv
+          git commit -m "🚀 [Update] 백악관 AI 정책 리포트 갱신 (${{ github.run_id }})" || echo "변경 사항 없음"
+          git push
