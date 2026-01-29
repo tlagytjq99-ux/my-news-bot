@@ -1,78 +1,59 @@
 import asyncio
 import csv
 import re
-import os
 from datetime import datetime
 from urllib.parse import urljoin
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 
-# --- [1. 상세 페이지 날짜 추출 함수] ---
-async def get_whitehouse_date(crawler, url, config):
-    """백악관 상세 페이지에서 영문 날짜를 찾아 YYYY-MM-DD로 변환"""
+async def get_whitehouse_details(crawler, url, config):
+    """상세 페이지에서 정확한 발행일을 추출합니다."""
     try:
         result = await crawler.arun(url=url, config=config)
-        if not (result.success and result.markdown):
-            return "날짜확인필요"
+        if not (result.success and result.markdown): return "날짜확인필요"
         
-        # 예: "January 29, 2026" 패턴 찾기
+        # 백악관 날짜 패턴 추출 (예: January 29, 2026)
         content = result.markdown[:2500]
         date_match = re.search(r'([A-Z][a-z]+ \d{1,2}, \d{4})', content)
-        
         if date_match:
             dt = datetime.strptime(date_match.group(1), "%B %d, %Y")
             return dt.strftime("%Y-%m-%d")
-    except:
-        pass
+    except: pass
     return datetime.now().strftime("%Y-%m-%d")
 
-# --- [2. 메인 수집 로직] ---
 async def main():
-    # 🎯 타켓: 백악관 브리핑룸 내 'AI' 검색 결과
-    target_url = "https://www.whitehouse.gov/?s=AI&post_type=briefing-room"
+    # 🎯 [핵심] 백악관 뉴스룸 내 AI 검색 결과 주소
+    search_url = "https://www.whitehouse.gov/?s=Artificial+Intelligence&post_type=briefing-room"
     
-    print(f"🚀 [시작] 백악관 AI 정책 수집 (Target: {target_url})")
+    print(f"📡 백악관 뉴스룸에서 AI 관련 최신 소식을 찾는 중...")
 
-    # 브라우저 및 실행 설정 (정부기관 대응용 정밀 세팅)
-    browser_config = BrowserConfig(
-        browser_type="chromium",
-        headless=True,
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-    )
-    run_config = CrawlerRunConfig(
-        wait_for="body", 
-        delay_before_return_html=10.0, # 넉넉한 대기 시간
-        cache_mode="bypass"
-    )
+    browser_config = BrowserConfig(browser_type="chromium", headless=True)
+    # 정부 사이트 보안 및 로딩 속도를 고려해 10초 대기 설정
+    run_config = CrawlerRunConfig(wait_for="body", delay_before_return_html=10.0)
 
-    # 필터링 키워드
-    ai_keywords = ['AI', 'ARTIFICIAL INTELLIGENCE', 'LLM', 'GPT', 'ALGORITHM', 'TECHNOLOGY']
     final_data = []
-
     async with AsyncWebCrawler(config=browser_config) as crawler:
-        print("📡 백악관 서버에 접속 중...")
-        result = await crawler.arun(url=target_url, config=run_config)
+        result = await crawler.arun(url=search_url, config=run_config)
         
         if result.success and result.markdown:
-            # 제목과 링크 추출 (마크다운 기반)
-            links = re.findall(r'\[([^\]]{15,})\]\(([^\)]+)\)', result.markdown)
-            print(f"🔎 후보 {len(links)}건 발견. 필터링 시작...")
+            # 1. 마크다운에서 기사 링크와 제목 추출
+            # 백악관 검색 결과의 전형적인 링크 패턴을 타겟팅합니다.
+            links = re.findall(r'\[([^\]]{20,})\]\(([^\)]+)\)', result.markdown)
             
             count = 0
             for title, link in links:
+                if count >= 5: break  # 🎯 딱 최신 5개만 수집
+                
                 title_clean = title.strip()
+                # 불필요한 메뉴 링크나 이미지 링크 제외
+                if any(x in link.lower() for x in ['facebook', 'twitter', '.jpg', '.png']): continue
                 
-                # 1. AI 키워드 필터링
-                if not any(kw in title_clean.upper() for kw in ai_keywords):
-                    continue
-
-                full_link = urljoin(target_url, link)
+                full_link = urljoin(search_url, link)
                 
-                # 2. 중복 방지
-                if any(d['제목'] == title_clean for d in final_data):
-                    continue
+                # 중복 체크
+                if any(d['제목'] == title_clean for d in final_data): continue
 
-                print(f"   📂 분석 중: {title_clean[:30]}...")
-                exact_date = await get_whitehouse_date(crawler, full_link, run_config)
+                print(f"   🔎 ({count+1}/5) 상세 분석 중: {title_clean[:30]}...")
+                exact_date = await get_whitehouse_details(crawler, full_link, run_config)
 
                 final_data.append({
                     "기관": "백악관(White House)",
@@ -81,21 +62,19 @@ async def main():
                     "링크": full_link,
                     "수집일": datetime.now().strftime("%Y-%m-%d")
                 })
-                
                 count += 1
-                if count >= 10: break # 한 번에 최대 10개만
-                await asyncio.sleep(2) # 서버 부하 방지 휴식
+                await asyncio.sleep(2) # 서버 부하 방지용 매너 모드
 
-    # --- [3. 결과 저장] ---
+    # 💾 결과 저장 (CSV)
     if final_data:
-        file_name = 'whitehouse_ai_report.csv'
+        file_name = 'whitehouse_ai_search_results.csv'
         with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.DictWriter(f, fieldnames=["기관", "발행일", "제목", "링크", "수집일"])
             writer.writeheader()
             writer.writerows(final_data)
-        print(f"✅ 성공! {file_name} 파일이 생성되었습니다.")
+        print(f"\n✅ 성공! 백악관 최신 AI 뉴스 5개가 '{file_name}'에 저장되었습니다.")
     else:
-        print("❌ 수집된 새로운 AI 정보가 없습니다.")
+        print("\n❌ 검색 결과에서 적절한 기사를 찾지 못했습니다.")
 
 if __name__ == "__main__":
     asyncio.run(main())
