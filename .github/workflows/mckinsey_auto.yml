@@ -1,0 +1,36 @@
+name: McKinsey AI Report Scraper
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * *' # 매일 아침 9시(한국시간) 자동 실행
+  workflow_dispatch: # 수동 실행 버튼 생성
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: os-actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install requests beautifulsoup4 googletrans==4.0.0-rc1
+
+      - name: Run Scraper
+        run: python mckinsey_ai_crawler.py
+
+      - name: Commit and Push changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add mckinsey_ai_report.csv
+          git commit -m "Update McKinsey AI Report" || echo "No changes to commit"
+          git push
