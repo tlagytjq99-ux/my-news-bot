@@ -33,6 +33,12 @@ jobs:
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
-          git add whitehouse_ai_report.csv  # 👈 파이썬이 만드는 이름과 일치해야 함
-          git commit -m "🚀 백악관 데이터 갱신" || echo "변경 사항 없음"
-          git push
+          
+          # 파일이 실제로 존재하는지 확인하고 있을 때만 add 합니다.
+          if [ -f whitehouse_ai_report.csv ]; then
+            git add whitehouse_ai_report.csv
+            git commit -m "🚀 [Update] 백악관 AI 정책 리포트 갱신" || echo "변경 사항 없음"
+            git push
+          else
+            echo "수집된 파일이 없어 업데이트를 건너뜁니다."
+          fi
