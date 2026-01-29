@@ -6,10 +6,12 @@ from datetime import datetime
 from urllib.parse import urljoin
 
 def main():
-    target_url = "https://www.cao.go.jp/new/index.html"
+    # 🎯 타겟: 내각부 보도발표(News Release) 전용 페이지
+    # 이곳은 구조가 비교적 일정해서 뉴스만 골라내기 좋습니다.
+    target_url = "https://www.cao.go.jp/houdou/houdou.html"
     file_name = 'japan_ai_report.csv'
     
-    print(f"📡 [일본 내각부] 데이터 수집 테스트 시작...")
+    print(f"📡 [일본 내각부] 보도자료 정밀 수집 시작...")
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
@@ -17,12 +19,11 @@ def main():
 
     try:
         response = requests.get(target_url, headers=headers, timeout=20)
-        response.encoding = response.apparent_encoding 
+        response.encoding = 'utf-8' 
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # 페이지 내 모든 링크 추출
-        links = soup.find_all('a', href=True)
-        
+        # 💡 [핵심] 뉴스 아이템은 보통 'main_list' 클래스의 <li> 안에 있습니다.
+        # 혹은 <dt>(날짜) <dd>(제목) 구조를 찾습니다.
         new_data = []
         existing_titles = set()
         if os.path.exists(file_name):
@@ -30,38 +31,46 @@ def main():
                 reader = csv.DictReader(f)
                 for row in reader: existing_titles.add(row['제목'])
 
-        count = 0
-        for a in links:
-            title = a.get_text().strip()
-            link = urljoin(target_url, a['href'])
+        # 뉴스 본문 영역 찾기
+        content_area = soup.find('div', id='main_list') or soup.find('div', id='contents')
+        
+        if content_area:
+            # 💡 뉴스 리스트의 <a> 태그들만 추출
+            items = content_area.find_all('a', href=True)
             
-            # 💡 [테스트 핵심] 키워드 검사 생략! 
-            # 제목이 15자 이상인 '진짜 뉴스'처럼 보이는 것 5개만 무조건 가져옵니다.
-            if len(title) > 15 and title not in existing_titles:
-                # 메뉴나 공통 공지 제외
-                if any(x in title for x in ['お問い合わせ', 'サイトマップ', 'アクセシビリティ']): 
-                    continue
-                    
-                print(f"   🆕 뉴스 수집 중: {title[:40]}...")
-                new_data.append({
-                    "기관": "일본 내각부(CAO)",
-                    "발행일": datetime.now().strftime("%Y-%m-%d"),
-                    "제목": title,
-                    "링크": link,
-                    "수집일": datetime.now().strftime("%Y-%m-%d")
-                })
-                count += 1
-                if count >= 5: break
+            count = 0
+            for a in items:
+                title = a.get_text().strip()
+                link = urljoin(target_url, a['href'])
+                
+                # 💡 [필터링]
+                # 1. 제목에 '내각부' 같은 단순 사이트명 제외
+                # 2. 이미 수집한 제목 제외
+                # 3. 주소에 houdou(보도)나 기사 형식이 포함된 것
+                if len(title) > 15 and title not in existing_titles:
+                    if 'index.html' not in link[-10:]: # 단순 메인페이지 링크 제외
+                        
+                        print(f"   🆕 뉴스 발견: {title[:40]}...")
+                        new_data.append({
+                            "기관": "일본 내각부(CAO)",
+                            "발행일": datetime.now().strftime("%Y-%m-%d"),
+                            "제목": title,
+                            "링크": link,
+                            "수집일": datetime.now().strftime("%Y-%m-%d")
+                        })
+                        count += 1
+                        if count >= 5: break
 
+        # 💾 결과 저장
         if new_data:
             file_exists = os.path.exists(file_name)
             with open(file_name, 'a', newline='', encoding='utf-8-sig') as f:
                 writer = csv.DictWriter(f, fieldnames=["기관", "발행일", "제목", "링크", "수집일"])
                 if not file_exists: writer.writeheader()
                 writer.writerows(new_data)
-            print(f"✅ 성공! 테스트 데이터 {len(new_data)}건 수집 완료.")
+            print(f"✅ 성공! {len(new_data)}건의 보도자료 수집 완료.")
         else:
-            print("❌ 여전히 데이터를 찾지 못했습니다. 구조 확인이 필요합니다.")
+            print("❌ 실제 뉴스 영역을 찾는 데 실패했습니다. 타겟을 다시 조정합니다.")
 
     except Exception as e:
         print(f"❌ 에러 발생: {e}")
