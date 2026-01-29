@@ -20,7 +20,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install requests beautifulsoup4 googletrans==4.0.0-rc1
+          pip install feedparser googletrans==4.0.0-rc1
 
       - name: Run Scraper
         run: python mckinsey_ai_crawler.py
