@@ -98,7 +98,7 @@ async def main():
     # 정렬: 출처 -> 발행일순
     final_data.sort(key=lambda x: (x['출처'], x['발행일']), reverse=False)
     
-    file_name = 'ai_only_trend_report.csv'
+    file_name = 'ai_trend_report.csv'
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["출처", "수집일", "발행일", "제목", "링크"])
         writer.writeheader()
