@@ -67,7 +67,7 @@ async def main():
 
     # 💾 결과 저장 (CSV)
     if final_data:
-        file_name = 'whitehouse_ai_search_results.csv'
+        file_name = 'whitehouse_ai_report.csv'
         with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.DictWriter(f, fieldnames=["기관", "발행일", "제목", "링크", "수집일"])
             writer.writeheader()
