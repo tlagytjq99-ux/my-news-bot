@@ -22,7 +22,8 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install feedparser googletrans==4.0.0-rc1
+          pip install crawl4ai googletrans==4.0.0-rc1
+          python -m playwright install chromium
 
       - name: Run Japan Scraper
         run: python japan_ai_crawler.py
