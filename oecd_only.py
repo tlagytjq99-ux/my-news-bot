@@ -3,10 +3,11 @@ import csv
 import urllib.parse
 from datetime import datetime
 from googletrans import Translator
-# 💡 원본 링크 추출을 위한 새로운 도구
-from googlenewsdecoder import decoderv2
+# 💡 좀 더 안정적인 gnewsdecoder 사용
+from googlenewsdecoder import gnewsdecoder
 
 def main():
+    # 🎯 검색 필터: OECD 사이트 내 AI 관련 핵심 문서
     query = 'site:oecd.org (intitle:"Artificial Intelligence" OR intitle:AI) -intitle:PISA'
     encoded_query = urllib.parse.quote(query)
     rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
@@ -15,40 +16,42 @@ def main():
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
 
-    print(f"📡 OECD 최신 리포트 수집 및 원본 링크 변환 시작...")
+    print(f"📡 수집 시작 (URL: {rss_url})")
     raw_data = []
 
     try:
         feed = feedparser.parse(rss_url)
+        print(f"🔍 총 {len(feed.entries)}건 발견. 필터링 시작...")
         
         for entry in feed.entries:
             title_en = entry.title.split(' - ')[0]
             google_link = entry.link
             
-            # 💡 [핵심] 구글 리다이렉트 링크를 원본 링크로 변환
+            # 💡 [핵심] 원본 링크 변환 시도 (실패해도 멈추지 않음)
+            actual_link = google_link
             try:
-                decoded = decoderv2(google_link)
-                actual_link = decoded.get('decoded_url', google_link)
-            except:
-                actual_link = google_link # 변환 실패 시 구글 링크 유지
+                decoded = gnewsdecoder(google_link, interval=1)
+                if decoded.get('status'):
+                    actual_link = decoded.get('decoded_url')
+            except Exception as e:
+                print(f"🔗 링크 변환 건너뜀: {e}")
 
-            # 키워드 필터링
-            keywords = ['AI', 'ARTIFICIAL INTELLIGENCE', 'ALGORITHMS', 'GENERATIVE']
+            # AI 키워드 검사
+            keywords = ['AI', 'ARTIFICIAL', 'INTELLIGENCE', 'ALGORITHMS', 'GENERATIVE']
             if not any(kw in title_en.upper() for kw in keywords):
                 continue
 
             if hasattr(entry, 'published_parsed') and entry.published_parsed:
                 pub_dt = datetime(*entry.published_parsed[:6])
-                pub_date_str = pub_dt.strftime('%Y-%m-%d')
                 raw_data.append({
                     "기관": "OECD",
-                    "발행일": pub_date_str,
+                    "발행일": pub_dt.strftime('%Y-%m-%d'),
                     "dt_obj": pub_dt,
                     "제목_en": title_en,
                     "링크": actual_link
                 })
 
-        # 최신순 정렬 후 상위 5개 선택
+        # 최신순 정렬 후 5개만
         raw_data.sort(key=lambda x: x['dt_obj'], reverse=True)
         final_5 = raw_data[:5]
 
@@ -65,11 +68,17 @@ def main():
             })
 
     except Exception as e:
-        print(f"❌ 오류 발생: {e}")
+        print(f"❌ 전체 프로세스 오류: {e}")
 
+    # 💾 파일 저장 (빈 파일 방지용 헤더 기록)
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["기관", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         if final_data:
             writer.writerows(final_data)
-            print(f"✅ 성공! 원본 링크로 변환된 최신 리포트 {len(final_data)}건 저장.")
+            print(f"✅ 완료! {len(final_data)}건의 데이터를 파일에 썼습니다.")
+        else:
+            print("⚠️ 수집된 데이터가 없습니다. 검색 조건을 확인하세요.")
+
+if __name__ == "__main__":
+    main()
