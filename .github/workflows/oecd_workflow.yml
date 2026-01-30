@@ -19,8 +19,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # 💡 여기에 requests를 추가했습니다!
-        pip install requests feedparser googletrans==4.0.0-rc1 
+        # 💡 requests와 beautifulsoup4를 모두 설치합니다.
+        pip install requests beautifulsoup4 googletrans==4.0.0-rc1 
 
     - name: Run OECD Crawler
       run: python oecd_only.py
