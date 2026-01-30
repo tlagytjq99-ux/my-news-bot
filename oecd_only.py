@@ -1,31 +1,36 @@
 import feedparser
 import csv
 import urllib.parse
-import requests
+import base64
+import re
 from datetime import datetime
 from googletrans import Translator
 
-def resolve_google_url(google_url):
-    """구글의 리다이렉트 벽을 뚫고 실제 원본 URL을 찾아내는 함수"""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
+def decode_google_news_url(url):
+    """구글 뉴스 주소의 암호화된 부분을 해독하여 원본 URL 추출"""
     try:
-        # 💡 핵심: 세션을 사용하고 allow_redirects=True로 끝까지 추적합니다.
-        session = requests.Session()
-        response = session.get(google_url, headers=headers, timeout=10, allow_redirects=True)
+        # 1. URL에서 암호화된 핵심 문자열만 추출
+        base64_str = url.split("articles/")[1].split("?")[0]
         
-        # 마지막으로 도착한 URL이 원본 주소입니다.
-        final_url = response.url
+        # 2. Base64 디코딩 (패딩 보정 작업 포함)
+        padding = len(base64_str) % 4
+        if padding != 0:
+            base64_str += "=" * (4 - padding)
         
-        # 만약 여전히 google.com이 포함되어 있다면 리다이렉트 체인을 다시 확인
-        if "google.com" in final_url and response.history:
-            final_url = response.history[-1].headers.get('Location', final_url)
-            
-        return final_url
-    except Exception as e:
-        print(f"🔗 링크 변환 중 오류(건너뜀): {e}")
-        return google_url
+        decoded_bytes = base64.urlsafe_b64decode(base64_str)
+        # 다양한 인코딩 대응
+        decoded_text = decoded_bytes.decode('latin-1', errors='ignore')
+        
+        # 3. 디코딩된 텍스트 안에서 http로 시작하는 문자열을 정규식으로 찾기
+        match = re.search(r'https?://[^\s\x00-\x1f\x7f-\xff]+', decoded_text)
+        if match:
+            clean_url = match.group(0)
+            # 끝부분에 남을 수 있는 쓰레기 문자 제거
+            clean_url = clean_url.split('?')[0].split('')[0].split('\x01')[0]
+            return clean_url
+    except Exception:
+        pass
+    return url # 해독 실패 시 원래 링크 반환
 
 def main():
     query = 'site:oecd.org (intitle:"Artificial Intelligence" OR intitle:AI) -intitle:PISA'
@@ -36,12 +41,11 @@ def main():
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
 
-    print(f"📡 OECD 최신 데이터 수집 및 원본 링크 강제 추출 시작...")
+    print(f"📡 OECD 데이터 수집 및 암호 링크 해독 시작...")
     raw_data = []
 
     try:
         feed = feedparser.parse(rss_url)
-        # 최신 발행 순 정렬
         entries = sorted(feed.entries, key=lambda x: x.get('published_parsed'), reverse=True)
         
         count = 0
@@ -50,15 +54,15 @@ def main():
             
             title_en = entry.title.split(' - ')[0]
             
-            # AI 관련 키워드 재검증
+            # AI 키워드 검증
             keywords = ['AI', 'ARTIFICIAL', 'INTELLIGENCE', 'ALGORITHMS', 'GENERATIVE']
             if not any(kw in title_en.upper() for kw in keywords):
                 continue
 
-            print(f"🔄 {count+1}번째 링크 분석 중: {title_en[:30]}...")
+            print(f"🔑 {count+1}번째 암호 해독 중: {title_en[:30]}...")
             
-            # 💡 [핵심] 리다이렉트 추적 실행
-            actual_link = resolve_google_url(entry.link)
+            # 💡 구글 서버에 묻지 않고 내부 수식으로 링크 해독
+            actual_link = decode_google_news_url(entry.link)
             
             pub_date = datetime(*entry.published_parsed[:6]).strftime('%Y-%m-%d') if hasattr(entry, 'published_parsed') else collected_date
 
@@ -82,9 +86,4 @@ def main():
         writer.writeheader()
         if raw_data:
             writer.writerows(raw_data)
-            print(f"✅ 성공! 원본 링크를 포함한 {len(raw_data)}건의 보고서를 확보했습니다.")
-        else:
-            print("⚠️ 조건에 맞는 리포트가 없습니다.")
-
-if __name__ == "__main__":
-    main()
+            print(f"✅ 완료! {len(raw_data)}건의 리포트를 해독하여 저장했습니다.")
