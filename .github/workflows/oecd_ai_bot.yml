@@ -1,0 +1,36 @@
+name: OECD AI Policy Update
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # 매일 오전 9시 실행
+  workflow_dispatch: # 수동 실행 버튼
+
+jobs:
+  run-crawler:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Libraries
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests googletrans==4.0.0-rc1
+
+    - name: Run OECD Crawler
+      run: python oecd_only.py
+
+    - name: Push Data to GitHub
+      run: |
+        git config --global user.name "OECD-Bot"
+        git config --global user.email "bot@github.com"
+        # 파일이 존재할 때만 업데이트
+        if [ -f oecd_ai_intelligence.csv ]; then
+          git add oecd_ai_intelligence.csv
+          git diff --quiet && git diff --staged --quiet || (git commit -m "📅 AI 보고서 업데이트: $(date +'%Y-%m-%d')" && git push)
+        fi
