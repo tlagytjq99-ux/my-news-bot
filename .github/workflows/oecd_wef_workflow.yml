@@ -31,6 +31,11 @@ jobs:
       run: |
         git config --global user.name "Policy-Intelligence-Bot"
         git config --global user.email "bot@github.com"
-        git add oecd_wef_intelligence.csv
-        # 변경 사항이 있을 때만 커밋
-        git diff --quiet && git diff --staged --quiet || (git commit -m "📅 OECD/WEF 정책 업데이트: $(date +'%Y-%m-%d')" && git push)
+        
+        # 💡 파일이 존재하는지 먼저 확인하는 안전장치
+        if [ -f oecd_wef_intelligence.csv ]; then
+          git add oecd_wef_intelligence.csv
+          git diff --quiet && git diff --staged --quiet || (git commit -m "📅 OECD/WEF 정책 업데이트: $(date +'%Y-%m-%d')" && git push)
+        else
+          echo "⚠️ 수집된 데이터 파일이 없습니다. 파이썬 코드를 점검하세요."
+        fi
