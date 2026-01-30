@@ -6,10 +6,9 @@ from googletrans import Translator
 from googlenewsdecoder import gnewsdecoder
 
 def main():
-    # 🎯 검색 필터를 최소화하여 '모든 AI 관련 페이지'를 수집합니다.
-    # 특정 단어(Report 등)를 강제하지 않아야 일반 웹 뉴스도 걸러지지 않습니다.
-    query = 'site:whitehouse.gov (AI OR "Artificial Intelligence") -intitle:briefing -intitle:press'
-    
+    # 🎯 백악관 정밀 타겟팅 쿼리
+    # 행정명령(Executive Order), 팩트시트(Fact Sheet), 전략(Strategy) 등 핵심 문서 위주
+    query = 'site:whitehouse.gov (intitle:"Artificial Intelligence" OR intitle:AI OR "Executive Order on AI") -intitle:briefing -intitle:press'
     encoded_query = urllib.parse.quote(query)
     rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
     
@@ -17,48 +16,44 @@ def main():
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
 
-    print(f"🇺🇸 백악관 AI 종합 수집 시작 (웹페이지 & PDF 통합)...")
+    print(f"🇺🇸 백악관 AI 핵심 정책 수집 시작...")
     final_data = []
 
     try:
         feed = feedparser.parse(rss_url)
-        # 다양한 형태를 보기 위해 상위 20개를 분석합니다.
-        entries = feed.entries[:20]
+        # 최신순 정렬 후 상위 10개 분석 (백악관은 중요도가 높으니 10개까지 봅니다)
+        entries = sorted(feed.entries, key=lambda x: x.get('published_parsed'), reverse=True)[:10]
         
         for entry in entries:
             title_en = entry.title.split(' - ')[0]
             
-            # AI 키워드가 제목에 포함되어 있는지 확인
-            if not any(kw in title_en.upper() for kw in ['AI', 'ARTIFICIAL', 'INTELLIGENCE']):
+            # 1. 너무 짧은 제목(단순 카테고리 등) 제외
+            if len(title_en.split()) <= 3:
                 continue
 
-            # 링크 해독
+            print(f"🔑 링크 해독 및 분석 중: {title_en[:40]}...")
+            
+            # 2. 암호 해독기로 원본 링크 추출 (성공의 핵심)
             try:
                 decoded = gnewsdecoder(entry.link)
                 actual_link = decoded.get('decoded_url', entry.link)
             except:
                 actual_link = entry.link
 
-            # 💡 [핵심] PDF 여부만 판별 (수집을 제한하지 않음)
-            is_pdf = "YES" if actual_link.lower().endswith('.pdf') or ".pdf?" in actual_link.lower() else "NO"
-            
-            # 발행일 및 번역
+            # 3. 날짜 처리
             pub_date = datetime(*entry.published_parsed[:6]).strftime('%Y-%m-%d') if hasattr(entry, 'published_parsed') else collected_date
+
+            # 4. 한국어 번역
             try:
                 title_ko = translator.translate(title_en.strip(), dest='ko').text
             except:
                 title_ko = title_en
 
-            # 💡 제목 옆에 표시를 원하셨으니 제목 앞에만 [PDF]를 붙이고 
-            # 일반 페이지(NO)는 깔끔하게 제목만 나갑니다.
-            display_title = f"[PDF] {title_ko}" if is_pdf == "YES" else title_ko
-
             final_data.append({
                 "기관": "WhiteHouse",
                 "발행일": pub_date,
-                "제목": display_title,
+                "제목": title_ko,
                 "원문": title_en,
-                "PDF여부": is_pdf,
                 "링크": actual_link,
                 "수집일": collected_date
             })
@@ -66,14 +61,15 @@ def main():
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
 
-    # 최신순 정렬
-    final_data.sort(key=lambda x: x['발행일'], reverse=True)
-
+    # 💾 결과 저장 (인코딩: utf-8-sig로 엑셀 한글 깨짐 방지)
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
-        writer = csv.DictWriter(f, fieldnames=["기관", "발행일", "제목", "원문", "PDF여부", "링크", "수집일"])
+        writer = csv.DictWriter(f, fieldnames=["기관", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
-        writer.writerows(final_data)
-        print(f"✅ 완료! 총 {len(final_data)}건의 혼합 문서 저장.")
+        if final_data:
+            writer.writerows(final_data)
+            print(f"✅ 완료! 백악관 핵심 정책 {len(final_data)}건 저장 완료.")
+        else:
+            print("⚠️ 조건에 맞는 최신 정책 문서가 발견되지 않았습니다.")
 
 if __name__ == "__main__":
     main()
