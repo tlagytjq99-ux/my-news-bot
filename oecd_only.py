@@ -1,49 +1,37 @@
-import requests
+import feedparser
 import csv
 from datetime import datetime
 from googletrans import Translator
 
 def main():
-    # 🎯 OECD AI 정책(pi20) 전용 API 엔드포인트
-    api_url = "https://www.oecd.org/en/_jcr_content/root/container/container/search.oecd-search-results.json"
-    
-    # 💡 검색 조건 설정 (AI 정책 태그 pi20)
-    params = {
-        "facetTags": "oecd-policy-issues:pi20",
-        "orderBy": "mostRelevant",
-        "page": 0
-    }
+    # 🎯 우회 전술: 구글 뉴스를 통해 OECD AI 정책 소식만 필터링해서 가져옴
+    # 검색어: site:oecd.org "Artificial Intelligence"
+    query = 'site:oecd.org "Artificial Intelligence"'
+    rss_url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
     
     file_name = 'oecd_ai_intelligence.csv'
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
 
-    # 🛡️ OECD 보안 통과를 위한 정밀 헤더 (브라우저 위장)
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Referer": "https://www.oecd.org/en/search.html",
-        "X-Requested-With": "XMLHttpRequest"
-    }
-
-    print(f"📡 OECD 서버에 데이터 요청 중...")
+    print(f"📡 구글 뉴스를 통해 OECD 데이터 우회 수집 시작...")
     new_data = []
 
     try:
-        response = requests.get(api_url, params=params, headers=headers, timeout=30)
+        feed = feedparser.parse(rss_url)
         
-        if response.status_code == 200:
-            items = response.json().get('results', [])
-            print(f"🔍 발견된 기사: {len(items)}건")
+        if not feed.entries:
+            print("⚠️ 검색 결과가 없습니다.")
+        else:
+            print(f"🔍 총 {len(feed.entries)}건의 데이터 발견. 분석 중...")
 
-            for item in items:
-                title_en = item.get('title', '')
-                link = item.get('url', '')
-                if link and not link.startswith('http'):
-                    link = "https://www.oecd.org" + link
+            for entry in feed.entries[:20]: # 최신 20건
+                title_en = entry.title
+                # 구글 뉴스 제목은 '제목 - 매체명' 형식이므로 분리
+                title_en = title_en.split(' - ')[0]
+                link = entry.link
                 
-                # 날짜가 없을 경우 오늘 날짜
-                pub_date = item.get('date', collected_date)
+                # 날짜 처리
+                published_date = datetime(*entry.published_parsed[:6]).strftime('%Y-%m-%d')
 
                 # 한국어 번역
                 try:
@@ -53,25 +41,23 @@ def main():
 
                 new_data.append({
                     "기관": "OECD",
-                    "발행일": pub_date,
+                    "발행일": published_date,
                     "제목": title_ko,
                     "원문": title_en,
                     "링크": link,
                     "수집일": collected_date
                 })
-        else:
-            print(f"❌ 접속 실패 (코드: {response.status_code})")
 
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
 
-    # 💾 결과 저장 (데이터가 없어도 빈 파일은 생성하여 에러 방지)
+    # 💾 결과 저장 (데이터가 없어도 빈 파일은 생성)
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["기관", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         if new_data:
             writer.writerows(new_data)
-            print(f"✅ {len(new_data)}건의 보고서 저장 완료!")
+            print(f"✅ {len(new_data)}건의 데이터를 구글 우회 방식으로 확보했습니다!")
         else:
             print("⚠️ 수집된 데이터가 없습니다.")
 
