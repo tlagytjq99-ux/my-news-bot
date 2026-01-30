@@ -20,8 +20,8 @@ jobs:
     - name: Install Libraries
       run: |
         python -m pip install --upgrade pip
-        # feedparser를 반드시 추가해야 합니다!
-        pip install requests googletrans==4.0.0-rc1 feedparser
+        # googlenewsdecoder를 추가했습니다.
+        pip install requests googletrans==4.0.0-rc1 feedparser googlenewsdecoder
 
     - name: Run OECD Crawler
       run: python oecd_only.py
