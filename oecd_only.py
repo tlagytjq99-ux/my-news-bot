@@ -2,37 +2,29 @@ import feedparser
 import csv
 import urllib.parse
 import requests
-import base64
-import re
 from datetime import datetime
 from googletrans import Translator
 
-def get_original_url(google_url):
-    """구글 뉴스의 암호화된 URL을 분석하여 원본 URL을 강제로 추출"""
+def resolve_google_url(google_url):
+    """구글의 리다이렉트 벽을 뚫고 실제 원본 URL을 찾아내는 함수"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
     try:
-        # 1. 구글 뉴스 링크에서 암호화된 데이터 부분 추출
-        # https://news.google.com/rss/articles/CBMi... 형태에서 CBMi... 부분
-        path = google_url.split('/')[-1].split('?')[0]
+        # 💡 핵심: 세션을 사용하고 allow_redirects=True로 끝까지 추적합니다.
+        session = requests.Session()
+        response = session.get(google_url, headers=headers, timeout=10, allow_redirects=True)
         
-        # 2. Base64 디코딩 시도 (구글이 사용하는 방식)
-        # 패딩 문제 해결을 위해 '===' 추가
-        decoded_bytes = base64.urlsafe_b64decode(path + '===')
-        decoded_str = decoded_bytes.decode('latin-1')
+        # 마지막으로 도착한 URL이 원본 주소입니다.
+        final_url = response.url
         
-        # 3. 디코딩된 문자열에서 URL 패턴(http...)을 정규식으로 찾아냄
-        urls = re.findall(r'https?://[^\x00-\x1f\x7f-\xff]+', decoded_str)
-        
-        if urls:
-            # 발견된 URL 중 가장 긴 것이 대개 원본 주소입니다.
-            actual_url = max(urls, key=len)
-            # 불필요한 노이즈 제거
-            actual_url = actual_url.split('?')[0].split('\x01')[0].split('\x03')[0]
-            return actual_url
+        # 만약 여전히 google.com이 포함되어 있다면 리다이렉트 체인을 다시 확인
+        if "google.com" in final_url and response.history:
+            final_url = response.history[-1].headers.get('Location', final_url)
             
-        # 4. 위 방식 실패 시, 실제 접속 후 경로 추적 (Fallback)
-        res = requests.get(google_url, timeout=5, allow_redirects=True)
-        return res.url
-    except:
+        return final_url
+    except Exception as e:
+        print(f"🔗 링크 변환 중 오류(건너뜀): {e}")
         return google_url
 
 def main():
@@ -44,11 +36,12 @@ def main():
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
 
-    print(f"📡 OECD 데이터 수집 및 링크 해독 시작...")
+    print(f"📡 OECD 최신 데이터 수집 및 원본 링크 강제 추출 시작...")
     raw_data = []
 
     try:
         feed = feedparser.parse(rss_url)
+        # 최신 발행 순 정렬
         entries = sorted(feed.entries, key=lambda x: x.get('published_parsed'), reverse=True)
         
         count = 0
@@ -57,14 +50,15 @@ def main():
             
             title_en = entry.title.split(' - ')[0]
             
-            # 키워드 필터링
+            # AI 관련 키워드 재검증
             keywords = ['AI', 'ARTIFICIAL', 'INTELLIGENCE', 'ALGORITHMS', 'GENERATIVE']
             if not any(kw in title_en.upper() for kw in keywords):
                 continue
 
-            print(f"🔗 {count+1}번째 원본 링크 해독 중...")
-            # 💡 [핵심] 암호 해독 및 리다이렉트 추적
-            actual_link = get_original_url(entry.link)
+            print(f"🔄 {count+1}번째 링크 분석 중: {title_en[:30]}...")
+            
+            # 💡 [핵심] 리다이렉트 추적 실행
+            actual_link = resolve_google_url(entry.link)
             
             pub_date = datetime(*entry.published_parsed[:6]).strftime('%Y-%m-%d') if hasattr(entry, 'published_parsed') else collected_date
 
@@ -82,13 +76,15 @@ def main():
     except Exception as e:
         print(f"❌ 오류: {e}")
 
-    # 💾 저장
+    # 💾 결과 저장
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["기관", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         if raw_data:
             writer.writerows(raw_data)
-            print(f"✅ 완료! {len(raw_data)}건의 원본 링크를 확보했습니다.")
+            print(f"✅ 성공! 원본 링크를 포함한 {len(raw_data)}건의 보고서를 확보했습니다.")
+        else:
+            print("⚠️ 조건에 맞는 리포트가 없습니다.")
 
 if __name__ == "__main__":
     main()
