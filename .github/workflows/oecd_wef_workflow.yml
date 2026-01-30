@@ -1,0 +1,36 @@
+name: OECD & WEF Policy Intelligence Update
+
+on:
+  schedule:
+    # 한국 시간 기준 매일 오전 8시 30분 (UTC 23:30 - 전날)
+    - cron: '30 23 * * *'
+  workflow_dispatch: # 대표님이 원할 때 언제든 'Run workflow' 버튼으로 즉시 실행 가능
+
+jobs:
+  update_policy_data:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 저장소 코드 가져오기
+      uses: actions/checkout@v3
+
+    - name: 파이썬 환경 설정
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: 필수 라이브러리 설치
+      run: |
+        python -m pip install --upgrade pip
+        pip install feedparser googletrans==4.0.0-rc1
+
+    - name: OECD & WEF 크롤러 실행
+      run: python oecd_wef_only.py
+
+    - name: 업데이트된 엑셀 파일 커밋 및 푸시
+      run: |
+        git config --global user.name "Policy-Intelligence-Bot"
+        git config --global user.email "bot@github.com"
+        git add oecd_wef_intelligence.csv
+        # 변경 사항이 있을 때만 커밋
+        git diff --quiet && git diff --staged --quiet || (git commit -m "📅 OECD/WEF 정책 업데이트: $(date +'%Y-%m-%d')" && git push)
