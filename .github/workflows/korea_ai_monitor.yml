@@ -32,5 +32,8 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # 현재 날짜를 환경 변수에 저장 (KST 기준)
+          echo "CURRENT_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
           git add korea_ai_policy_report.csv
-          git diff --quiet && git diff --staged --quiet || (git commit -m "🇰🇷 국내 정책 데이터 업데이트 (${{ strftime('%Y-%m-%d') }})" && git push)
+          # 변경사항이 있을 때만 커밋
+          git diff --quiet && git diff --staged --quiet || (git commit -m "🇰🇷 국내 정책 데이터 업데이트 ($CURRENT_DATE)" && git push)
