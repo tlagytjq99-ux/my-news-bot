@@ -1,83 +1,100 @@
-import feedparser
+import requests
+from bs4 import BeautifulSoup
 import csv
 import os
-import time
 from datetime import datetime
 from googletrans import Translator
+import time
 
 def main():
-    # 🎯 맥킨지 + PwC 공식 보도자료 채널 (PR Newswire)
-    sources = [
-        {"name": "McKinsey", "url": "https://www.mckinsey.com/insights/rss"},
-        # 💡 PwC가 공식 보도자료를 뿌리는 글로벌 뉴스 피드입니다. (차단 불가)
-        {"name": "PwC_Official", "url": "https://www.prnewswire.com/rss/news-releases-list.rss?search=PwC"}
-    ]
-    
+    # 🎯 맥킨지(RSS) + PwC 기술 섹션(직접 크롤링)
+    target_url = "https://www.pwc.com/gx/en/issues/technology.html"
     file_name = 'ai_market_intelligence.csv'
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
     
-    print(f"📡 [최후의 수단] PwC 뉴스 피드 수집 시작...")
+    print(f"📡 [PwC 기술섹션] 직접 공략 수집 시작...")
 
     new_data = []
-    ai_keywords = ['AI', 'TECH', 'DIGITAL', 'INTELLIGENCE', 'DATA', 'GEN', 'CLOUD', 'ESG']
 
-    for source in sources:
-        print(f"🔍 {source['name']} 분석 중...")
-        try:
-            # PR Newswire는 봇 차단이 거의 없어 잘 뚫립니다.
-            feed = feedparser.parse(source['url'])
+    # 1️⃣ [McKinsey 수집] - 기존에 잘 되던 방식 유지
+    try:
+        import feedparser
+        mck_feed = feedparser.parse("https://www.mckinsey.com/insights/rss")
+        for entry in mck_feed.entries[:10]:
+            new_data.append({
+                "기관": "McKinsey",
+                "발행일": time.strftime('%Y-%m-%d', entry.published_parsed) if 'published_parsed' in entry else collected_date,
+                "제목": translator.translate(entry.title, dest='ko').text,
+                "원문": entry.title,
+                "링크": entry.link,
+                "수집일": collected_date
+            })
+        print(f"   ✅ McKinsey 수집 완료")
+    except:
+        print(f"   ⚠️ McKinsey 수집 중 일부 오류")
+
+    # 2️⃣ [PwC 직접 공략] - 대표님이 주신 페이지를 뚫습니다.
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9,ko;q=0.8"
+    }
+
+    try:
+        response = requests.get(target_url, headers=headers, timeout=30)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            # PwC 페이지의 뉴스 카드 제목과 링크를 찾습니다.
+            # PwC는 보통 h3 태그나 특정 클래스의 a 태그를 사용합니다.
+            articles = soup.find_all(['h3', 'h4', 'a'], limit=50)
             
-            if not feed.entries:
-                print(f"   ⚠️ {source['name']} 응답 없음. (주소를 점검 중...)")
-                continue
+            pwc_count = 0
+            for art in articles:
+                title_en = art.get_text().strip()
+                # AI, Tech 관련 글만 필터링
+                if any(kw in title_en.upper() for kw in ['AI', 'TECH', 'DIGITAL', 'GEN', 'INTELLIGENCE']):
+                    link = ""
+                    if art.name == 'a':
+                        link = art.get('href', '')
+                    else:
+                        parent = art.find_parent('a')
+                        if parent: link = parent.get('href', '')
 
-            count = 0
-            for entry in feed.entries:
-                title_en = entry.title
-                link = entry.link
-                
-                raw_date = entry.get('published_parsed', None)
-                published_date = time.strftime('%Y-%m-%d', raw_date) if raw_date else collected_date
+                    if link and len(title_en) > 20:
+                        full_url = f"https://www.pwc.com{link}" if link.startswith('/') else link
+                        
+                        # 중복 제거 및 수집
+                        if not any(d['원문'] == title_en for d in new_data):
+                            try:
+                                title_ko = translator.translate(title_en, dest='ko').text
+                            except:
+                                title_ko = title_en
 
-                # 제목에 키워드 확인 (PwC는 AI뿐만 아니라 디지털 전환 전체를 봅니다)
-                upper_title = title_en.upper()
-                if any(kw in upper_title for kw in ai_keywords):
-                    try:
-                        res = translator.translate(title_en, src='en', dest='ko')
-                        title_ko = res.text
-                    except:
-                        title_ko = title_en
+                            new_data.append({
+                                "기관": "PwC",
+                                "발행일": collected_date, # 페이지 특성상 발행일 추출이 어려워 수집일로 대체
+                                "제목": title_ko,
+                                "원문": title_en,
+                                "링크": full_url,
+                                "수집일": collected_date
+                            })
+                            pwc_count += 1
+                if pwc_count >= 10: break
+            print(f"   ✅ PwC ({target_url})에서 {pwc_count}건 확보!")
+        else:
+            print(f"   ❌ PwC 페이지 접속 실패 (상태 코드: {response.status_code})")
+    except Exception as e:
+        print(f"   ❌ PwC 직접 크롤링 중 에러: {e}")
 
-                    print(f"   ✅ [성공] {source['name']}: {title_ko[:25]}...")
-
-                    new_data.append({
-                        "기관": source['name'],
-                        "발행일": published_date,
-                        "제목": title_ko,
-                        "원문": title_en,
-                        "링크": link,
-                        "수집일": collected_date
-                    })
-                    count += 1
-                    if count >= 15: break
-            
-            print(f"   ✅ {source['name']}에서 {count}건 확보!")
-
-        except Exception as e:
-            print(f"   ❌ {source['name']} 에러: {e}")
-
-    # 💾 저장 로직
+    # 💾 CSV 저장
     if new_data:
-        new_data.sort(key=lambda x: x['발행일'], reverse=True)
         with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
-            fieldnames = ["기관", "발행일", "제목", "원문", "링크", "수집일"]
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer = csv.DictWriter(f, fieldnames=["기관", "발행일", "제목", "원문", "링크", "수집일"])
             writer.writeheader()
             writer.writerows(new_data)
-        print(f"\n🎉 드디어 마침표! 총 {len(new_data)}건의 데이터를 확보했습니다.")
+        print(f"\n🎉 통합 수집 완료! 총 {len(new_data)}건 저장.")
     else:
-        print("\n💡 새로 발견된 전략 리포트가 없습니다.")
+        print("\n💡 수집된 데이터가 없습니다.")
 
 if __name__ == "__main__":
     main()
