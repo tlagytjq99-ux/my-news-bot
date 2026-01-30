@@ -1,12 +1,22 @@
 import feedparser
 import csv
 import urllib.parse
+import requests
 from datetime import datetime
 from googletrans import Translator
 
+def get_real_url(google_url):
+    """구글 뉴스 리다이렉트 링크를 원본 URL로 변환"""
+    try:
+        # 💡 원본 링크로 연결되는지 확인 (최대 5초 대기)
+        response = requests.get(google_url, timeout=5)
+        # 💡 최종 도착지(원본 주소) 반환
+        return response.url
+    except:
+        # 실패 시 구글 링크라도 유지
+        return google_url
+
 def main():
-    # 🎯 검색 필터 강화: 제목에 반드시 AI 관련 단어가 포함된 OECD 결과만 검색
-    # intitle:"Artificial Intelligence" OR intitle:AI
     query = 'site:oecd.org (intitle:"Artificial Intelligence" OR intitle:AI) -intitle:PISA'
     encoded_query = urllib.parse.quote(query)
     rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
@@ -15,7 +25,7 @@ def main():
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
 
-    print(f"📡 OECD 최신 AI 리포트(Top 5) 정밀 수집 시작...")
+    print(f"📡 OECD 최신 AI 리포트 수집 및 원본 링크 변환 시작...")
     raw_data = []
 
     try:
@@ -23,39 +33,34 @@ def main():
         
         for entry in feed.entries:
             title_en = entry.title.split(' - ')[0]
-            link = entry.link
             
-            # 💡 [2차 필터] 제목에 AI 관련 핵심 키워드가 없는 경우 제외
-            keywords = ['AI', 'ARTIFICIAL INTELLIGENCE', 'ALGORITHMS', 'GENERATIVE']
+            # 💡 [필터링] AI 관련 핵심 키워드 검사
+            keywords = ['AI', 'ARTIFICIAL', 'INTELLIGENCE', 'ALGORITHMS', 'GENERATIVE']
             if not any(kw in title_en.upper() for kw in keywords):
                 continue
 
-            # 날짜 파싱 및 객체 변환
             if hasattr(entry, 'published_parsed') and entry.published_parsed:
                 pub_dt = datetime(*entry.published_parsed[:6])
-                pub_date_str = pub_dt.strftime('%Y-%m-%d')
-            else:
-                continue
-
-            raw_data.append({
-                "기관": "OECD",
-                "발행일": pub_date_str,
-                "dt_obj": pub_dt,
-                "제목_en": title_en,
-                "링크": link
-            })
+                raw_data.append({
+                    "기관": "OECD",
+                    "발행일": pub_dt.strftime('%Y-%m-%d'),
+                    "dt_obj": pub_dt,
+                    "제목_en": title_en,
+                    "google_link": entry.link # 임시 저장
+                })
 
         # 1️⃣ 최신순 정렬
         raw_data.sort(key=lambda x: x['dt_obj'], reverse=True)
 
-        # 2️⃣ 최상위 5개만 선택
-        final_5 = raw_data[:5]
-
-        # 3️⃣ 번역 및 데이터 구성
+        # 2️⃣ 최상위 5개만 선택 및 원본 링크 변환
         final_data = []
-        for item in final_5:
+        for item in raw_data[:5]:
+            print(f"🔗 원본 링크 추출 중: {item['제목_en'][:30]}...")
+            
+            # 💡 구글 링크를 원본 링크로 변환
+            actual_link = get_real_url(item['google_link'])
+            
             try:
-                # 번역 품질을 위해 앞뒤 공백 제거
                 title_ko = translator.translate(item['제목_en'].strip(), dest='ko').text
             except:
                 title_ko = item['제목_en']
@@ -65,7 +70,7 @@ def main():
                 "발행일": item['발행일'],
                 "제목": title_ko,
                 "원문": item['제목_en'],
-                "링크": item['링크'],
+                "링크": actual_link,
                 "수집일": collected_date
             })
 
@@ -78,7 +83,7 @@ def main():
         writer.writeheader()
         if final_data:
             writer.writerows(final_data)
-            print(f"✅ 성공! 최신 AI 핵심 리포트 {len(final_data)}건 저장 완료.")
+            print(f"✅ 성공! 원본 링크가 포함된 {len(final_data)}건 저장 완료.")
         else:
             print("⚠️ 조건에 맞는 최신 AI 리포트가 발견되지 않았습니다.")
 
