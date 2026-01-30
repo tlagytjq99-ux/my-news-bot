@@ -19,7 +19,7 @@ jobs:
 
     - name: Install Libraries
       run: |
-        pip install requests googletrans==4.0.0-rc1 feedparser
+        pip install requests googletrans==4.0.0-rc1 feedparser googlenewsdecoder
 
     - name: Run OECD Crawler
       run: python oecd_only.py
