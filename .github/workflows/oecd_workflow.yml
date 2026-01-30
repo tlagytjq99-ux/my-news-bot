@@ -1,0 +1,38 @@
+name: OECD AI Intelligence Update
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # 매일 오전 9시
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install feedparser googletrans==4.0.0-rc1
+
+    - name: Run OECD Crawler
+      run: python oecd_only.py  # 💡 파일명 확인!
+
+    - name: Commit and Push
+      run: |
+        git config --global user.name "OECD-Bot"
+        git config --global user.email "bot@github.com"
+        
+        # 파일이 존재할 때만 git add 실행 (에러 방지)
+        if [ -f oecd_ai_intelligence.csv ]; then
+          git add oecd_ai_intelligence.csv
+          git diff --quiet && git diff --staged --quiet || (git commit -m "📅 OECD AI 업데이트" && git push)
+        else
+          echo "파일이 생성되지 않았습니다."
+          exit 1
+        fi
