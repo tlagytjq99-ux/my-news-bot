@@ -1,40 +1,34 @@
-name: OECD AI Intelligence Update
+name: OECD AI Report Collector
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 매일 오전 9시
+    - cron: "0 0 * * 1"   # 매주 월요일
   workflow_dispatch:
 
 jobs:
-  build:
+  collect:
     runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout repo
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.9'
+        python-version: "3.10"
 
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        # 💡 필요한 모든 도구(RSS 파서, 접속기, 스크래퍼, 번역기)를 한 번에 설치합니다.
-        pip install feedparser requests beautifulsoup4 googletrans==4.0.0-rc1 
+        pip install requests beautifulsoup4 pandas
 
-    - name: Run OECD Crawler
-      run: python oecd_only.py
+    - name: Run crawler
+      run: python collect_ai_reports.py
 
-    - name: Commit and Push
+    - name: Commit and push
       run: |
-        git config --global user.name "OECD-Bot"
-        git config --global user.email "bot@github.com"
-        
-        # 파일이 존재할 때만 git add 실행 (에러 방지)
-        if [ -f oecd_ai_intelligence.csv ]; then
-          git add oecd_ai_intelligence.csv
-          git diff --quiet && git diff --staged --quiet || (git commit -m "📅 OECD AI 업데이트" && git push)
-        else
-          echo "파일이 생성되지 않았습니다."
-          exit 1
-        fi
+        git config --global user.name "github-actions"
+        git config --global user.email "actions@github.com"
+        git add data/
+        git commit -m "Update AI reports" || echo "No changes"
+        git push
