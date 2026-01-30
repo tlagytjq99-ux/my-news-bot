@@ -6,28 +6,30 @@ from datetime import datetime
 from googletrans import Translator
 
 def main():
-    # 🎯 타겟 기관 교체: 가트너 -> 딜로이트 (AI 리포트 풍부)
+    # 🎯 맥킨지(성공확정) + PwC의 핵심 소식이 올라오는 Strategy+Business 피드
     sources = [
         {"name": "McKinsey", "url": "https://www.mckinsey.com/insights/rss"},
-        {"name": "Deloitte", "url": "https://www2.deloitte.com/us/en/pages/about-deloitte/articles/rss-feed.rss"}
+        # PwC 계열의 비즈니스/테크 전문 미디어 (PwC 리포트가 여기 다 모입니다)
+        {"name": "PwC_Insights", "url": "https://www.strategy-business.com/rss/all_articles"}
     ]
     
     file_name = 'ai_market_intelligence.csv'
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
     
-    print(f"📡 [통합 엔진] 시장조사기관 수집 시작 (McKinsey + Deloitte)...")
+    print(f"📡 [긴급 우회] 수집 시작 (McKinsey + Strategy+Business)...")
 
     new_data = []
-    ai_keywords = ['AI', 'TECH', 'DIGITAL', 'DATA', 'GEN', 'INTELLIGENCE', 'STRATEGY', 'CLOUD', 'FUTURE']
+    ai_keywords = ['AI', 'GEN', 'TECH', 'DIGITAL', 'INTELLIGENCE', 'DATA', 'SOFTWARE', 'CLOUD']
 
     for source in sources:
         print(f"🔍 {source['name']} 분석 중...")
         try:
+            # 주소 파싱 (Strategy+Business는 주소가 살아있음을 확인했습니다)
             feed = feedparser.parse(source['url'])
             
             if not feed.entries:
-                print(f"   ⚠️ {source['name']} 피드가 비어있습니다.")
+                print(f"   ⚠️ {source['name']} 피드 응답 없음 (수집 대상 제외)")
                 continue
 
             count = 0
@@ -35,11 +37,10 @@ def main():
                 title_en = entry.title
                 link = entry.link
                 
-                # 날짜 처리
                 raw_date = entry.get('published_parsed', None)
                 published_date = time.strftime('%Y-%m-%d', raw_date) if raw_date else collected_date
 
-                # AI 관련 키워드 필터링
+                # 제목 키워드 필터링
                 upper_title = title_en.upper()
                 if any(kw in upper_title for kw in ai_keywords):
                     try:
@@ -59,10 +60,10 @@ def main():
                     count += 1
                     if count >= 15: break
             
-            print(f"   ✅ {source['name']}에서 {count}건 확보 완료!")
+            print(f"   ✅ {source['name']}에서 {count}건 확보 성공!")
 
         except Exception as e:
-            print(f"   ❌ {source['name']} 수집 중 에러: {e}")
+            print(f"   ❌ {source['name']} 에러: {e}")
 
     # 💾 결과 저장
     if new_data:
@@ -72,9 +73,9 @@ def main():
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(new_data)
-        print(f"\n🎉 통합 수집 완료! 총 {len(new_data)}건의 인사이트를 담았습니다.")
+        print(f"\n🎉 드디어 완성! 총 {len(new_data)}건의 데이터를 확보했습니다.")
     else:
-        print("\n💡 새로 올라온 AI 리포트가 없습니다.")
+        print("\n💡 조건에 맞는 새로운 리포트가 없습니다.")
 
 if __name__ == "__main__":
     main()
