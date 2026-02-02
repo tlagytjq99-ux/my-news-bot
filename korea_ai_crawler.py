@@ -5,36 +5,37 @@ from datetime import datetime
 from googlenewsdecoder import gnewsdecoder
 
 def main():
+    # 🎯 쿼리에 2026년과 '보도자료' 키워드 직접 주입
     target_sources = {
-    "과기정통부": '과기정통부 "보도자료" (인공지능 OR AI)',
-    "NIA": 'site:nia.or.kr "보도자료" (인공지능 OR AI)',
-    "NIPA": 'site:nipa.kr "보도자료" (인공지능 OR AI)',
-    "SPRI": 'site:spri.kr (인공지능 OR AI)', # SPRI는 보고서 위주라 그대로 유지
-    "ETRI": 'site:etri.re.kr "보도자료" (인공지능 OR AI)'
-}
+        "과기정통부": '과기정통부 "보도자료" 2026 (인공지능 OR AI)',
+        "NIA": 'site:nia.or.kr "보도자료" 2026 (인공지능 OR AI)',
+        "NIPA": 'site:nipa.kr "보도자료" 2026 (인공지능 OR AI)',
+        "SPRI": 'site:spri.kr (인공지능 OR AI) 2026',
+        "ETRI": 'site:etri.re.kr "보도자료" 2026 (인공지능 OR AI)'
+    }
 
     exclude_keywords = [
         '맨 뒤로', '직원검색', '카드뉴스', '입찰공고', '게시판 인쇄', '로그인', 
         '홈페이지', '상세보기', '사전정보공표', '누리집입니다', 'Untitled', 
-        '보 도 자 료', '국가별 정보', '비공개정보', '검색결과', '목록', '직원 안내', '인사', '동정'
+        '보 도 자 료', '국가별 정보', '비공개정보', '검색결과', '목록', '직원 안내'
     ]
 
     file_name = 'korea_ai_policy_report.csv'
     collected_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     final_data = []
 
-    print(f"🚀 [부처별 그룹화] 국내 AI 정책 수집 시작...")
+    # 🗓️ 2026년 데이터가 아니면 절대 수집하지 않음
+    BASE_DATE = "2026-01-01"
+
+    print(f"🚀 [2026 보도자료 핀포인트] 수집 시작...")
 
     for agency, query in target_sources.items():
-        print(f"📡 {agency} 데이터 수집 중...")
+        print(f"📡 {agency} 최신 보도자료 탐색 중...")
         encoded_query = urllib.parse.quote(query)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
         
         feed = feedparser.parse(rss_url)
         agency_count = 0
-        
-        # 해당 기관의 임시 리스트
-        temp_agency_list = []
         
         for entry in feed.entries:
             if agency_count >= 2: break 
@@ -43,7 +44,11 @@ def main():
             clean_title = raw_title.split(">")[-1].strip() if ">" in raw_title else raw_title.strip()
             
             if any(key in clean_title for key in exclude_keywords): continue
-            if len(clean_title) < 5: continue
+
+            pub_date = datetime(*entry.published_parsed[:6]).strftime('%Y-%m-%d') if hasattr(entry, 'published_parsed') else datetime.now().strftime('%Y-%m-%d')
+            
+            # 🔥 강력한 필터: 2026년 자료가 아니면 즉시 탈락
+            if pub_date < BASE_DATE: continue
 
             try:
                 decoded = gnewsdecoder(entry.link)
@@ -51,33 +56,26 @@ def main():
             except:
                 actual_link = entry.link
 
-            pub_date = datetime(*entry.published_parsed[:6]).strftime('%Y-%m-%d') if hasattr(entry, 'published_parsed') else datetime.now().strftime('%Y-%m-%d')
-            if pub_date < '2025-01-01': continue
-
             is_pdf = "YES" if any(x in actual_link.lower() for x in ['.pdf', 'download', 'filedown', 'attach']) else "NO"
 
-            temp_agency_list.append({
+            final_data.append({
                 "기관": agency,
                 "발행일": pub_date,
-                "제목": f"[리포트] {clean_title}" if is_pdf == "YES" else clean_title,
+                "제목": f"[보도자료] {clean_title}" if "보도자료" not in clean_title else clean_title,
                 "PDF여부": is_pdf,
                 "링크": actual_link,
                 "최종수집시간": collected_time
             })
             agency_count += 1
-        
-        # 기관별로 모은 데이터를 날짜순으로 정렬 후 전체 리스트에 추가
-        temp_agency_list.sort(key=lambda x: x['발행일'], reverse=True)
-        final_data.extend(temp_agency_list)
 
-    # 💾 저장 (이미 기관별로 모여있으므로 그대로 저장)
+    # 💾 저장
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         fieldnames = ["기관", "발행일", "제목", "PDF여부", "링크", "최종수집시간"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(final_data)
 
-    print(f"✅ 완료! 기관별 최신 2건씩 총 {len(final_data)}건이 부처별로 정리되었습니다.")
+    print(f"✅ 완료! 2026년 최신 보도자료 위주로 {len(final_data)}건 수집되었습니다.")
 
 if __name__ == "__main__":
     main()
