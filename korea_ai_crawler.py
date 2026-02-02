@@ -6,34 +6,47 @@ from googlenewsdecoder import gnewsdecoder
 
 def main():
     target_sources = {
-        "과기정통부": 'site:msit.go.kr (인공지능 OR AI) -intitle:직원 -intitle:검색',
-        "NIA": 'site:nia.or.kr (인공지능 OR AI) -intitle:이동 -intitle:공고',
+        "과기정통부": 'site:msit.go.kr (인공지능 OR AI)',
+        "NIA": 'site:nia.or.kr (인공지능 OR AI)',
+        "NIPA": 'site:nipa.kr (인공지능 OR AI)',
         "SPRI": 'site:spri.kr (인공지능 OR AI)',
+        "ETRI": 'site:etri.re.kr (인공지능 OR AI)',
         "개인정보위": 'site:pipc.go.kr (인공지능 OR AI)'
     }
 
-    # 🛑 노이즈 제거를 위한 블랙리스트 키워드
-    exclude_keywords = ['맨 뒤로', '직원검색', '카드뉴스', '입찰공고', '게시판 인쇄', '로그인', '홈페이지']
+    # 🛑 노이즈 및 중복 단어 필터 대폭 보강
+    exclude_keywords = [
+        '맨 뒤로', '직원검색', '카드뉴스', '입찰공고', '게시판 인쇄', '로그인', 
+        '홈페이지', '상세보기', '사전정보공표', '누리집입니다', 'Untitled', 
+        '보 도 자 료', '국가별 정보', '비공개정보', '검색결과', '목록', '직원 안내'
+    ]
 
-    file_name = 'korea_ai_policy_clean.csv'
-    collected_date = datetime.now().strftime("%Y-%m-%d")
+    file_name = 'korea_ai_policy_report.csv'
+    # 초 단위 수집시간을 추가하여 GitHub Actions의 강제 업데이트 유도
+    collected_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     final_data = []
+
+    print(f"🚀 국내 AI 정책 정밀 수집 및 제목 정제 시작...")
 
     for agency, query in target_sources.items():
         encoded_query = urllib.parse.quote(query)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
-        feed = feedparser.parse(rss_url)
         
-        for entry in feed.entries[:15]: # 더 많이 훑고 필터링
-            title = entry.title.split(' - ')[0]
+        feed = feedparser.parse(rss_url)
+        for entry in feed.entries[:25]: # 더 넓은 범위 탐색
+            raw_title = entry.title.split(' - ')[0]
             
-            # 1. 노이즈 필터링 (블랙리스트 단어가 제목에 있으면 제외)
-            if any(key in title for key in exclude_keywords):
-                continue
+            # 1. 제목 정제: "HOME > 알림마당 > 핵심제목" 구조에서 마지막 핵심제목만 추출
+            if ">" in raw_title:
+                clean_title = raw_title.split(">")[-1].strip()
+            else:
+                clean_title = raw_title.strip()
             
-            # 2. 너무 짧은 제목 제외 (정상적인 제목은 보통 10자 이상)
-            if len(title) < 5:
-                continue
+            # 2. 필터링: 블랙리스트 단어 포함 시 제외
+            if any(key in clean_title for key in exclude_keywords): continue
+            
+            # 3. 필터링: 너무 짧거나 무의미한 제목 제외
+            if len(clean_title) < 5 or clean_title == "공지사항": continue
 
             try:
                 decoded = gnewsdecoder(entry.link)
@@ -41,28 +54,34 @@ def main():
             except:
                 actual_link = entry.link
 
-            pub_date = datetime(*entry.published_parsed[:6]).strftime('%Y-%m-%d')
-            
-            # 3. 최신 데이터만 수집 (예: 2025년 이후 데이터만)
-            if pub_date < '2025-01-01':
-                continue
+            # 4. 필터링: 2025년 이후 최신 데이터만 유지
+            pub_date = datetime(*entry.published_parsed[:6]).strftime('%Y-%m-%d') if hasattr(entry, 'published_parsed') else "2026-01-01"
+            if pub_date < '2025-01-01': continue
 
-            is_pdf = "YES" if "Download" in actual_link or actual_link.lower().endswith('.pdf') or "FileDown" in actual_link else "NO"
+            # PDF 판별 로직 (국내 기관 URL 특성 반영)
+            is_pdf = "NO"
+            if any(x in actual_link.lower() for x in ['.pdf', 'download', 'filedown', 'attach']):
+                is_pdf = "YES"
 
             final_data.append({
                 "기관": agency,
                 "발행일": pub_date,
-                "제목": f"[리포트] {title}" if is_pdf == "YES" else title,
+                "제목": f"[리포트] {clean_title}" if is_pdf == "YES" else clean_title,
                 "PDF여부": is_pdf,
-                "링크": actual_link
+                "링크": actual_link,
+                "최종수집시간": collected_time
             })
 
-    # 저장 로직 (최신순)
+    # 최신 날짜순 정렬
     final_data.sort(key=lambda x: x['발행일'], reverse=True)
+
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
-        writer = csv.DictWriter(f, fieldnames=["기관", "발행일", "제목", "PDF여부", "링크"])
+        fieldnames = ["기관", "발행일", "제목", "PDF여부", "링크", "최종수집시간"]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(final_data)
+
+    print(f"✅ 정제 완료! 총 {len(final_data)}건 저장.")
 
 if __name__ == "__main__":
     main()
