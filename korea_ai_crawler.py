@@ -6,12 +6,12 @@ from googlenewsdecoder import gnewsdecoder
 
 def main():
     target_sources = {
-        "과기정통부": '과기정통부 (인공지능 OR AI) "보도자료"',
-        "NIA": 'site:nia.or.kr (인공지능 OR AI)',
-        "NIPA": 'site:nipa.kr (인공지능 OR AI)',
-        "SPRI": 'site:spri.kr (인공지능 OR AI)',
-        "ETRI": 'site:etri.re.kr (인공지능 OR AI)'
-    }
+    "과기정통부": '과기정통부 "보도자료" (인공지능 OR AI)',
+    "NIA": 'site:nia.or.kr "보도자료" (인공지능 OR AI)',
+    "NIPA": 'site:nipa.kr "보도자료" (인공지능 OR AI)',
+    "SPRI": 'site:spri.kr (인공지능 OR AI)', # SPRI는 보고서 위주라 그대로 유지
+    "ETRI": 'site:etri.re.kr "보도자료" (인공지능 OR AI)'
+}
 
     exclude_keywords = [
         '맨 뒤로', '직원검색', '카드뉴스', '입찰공고', '게시판 인쇄', '로그인', 
