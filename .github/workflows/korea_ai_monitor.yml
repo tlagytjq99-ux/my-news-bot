@@ -2,6 +2,7 @@ name: Korea AI Policy Auto Monitor
 
 on:
   schedule:
+    # 한국 시간 기준 매일 오전 9시 (UTC 00:00)
     - cron: '0 0 * * *'
   workflow_dispatch: 
 
@@ -24,27 +25,21 @@ jobs:
         run: |
           pip install feedparser googlenewsdecoder requests
 
-      - name: 🚀 국내 크롤러 실행
-        run: |
-          python korea_ai_crawler.py
-          # 파일이 잘 생성되었는지 목록 확인 (디버깅용)
-          ls -l *.csv || echo "파일이 생성되지 않았습니다."
+      - name: 🚀 국내 크롤러 실행 (정밀 필터 적용)
+        run: python korea_ai_crawler.py
 
-      - name: 💾 데이터 업데이트 및 커밋
+      - name: 💾 데이터 자동 커밋 및 저장
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 현재 디렉토리에 있는 모든 csv 파일을 추가
           git add *.csv
           
-          # 날짜 변수 설정
+          # 변경사항이 있을 때만 날짜와 함께 커밋
           NOW=$(date +'%Y-%m-%d %H:%M')
-          
-          # 변경사항(스테이징된 파일)이 있는지 확인 후 커밋
           if ! git diff --cached --quiet; then
-            git commit -m "🇰🇷 국내 정책 데이터 업데이트 ($NOW)"
+            git commit -m "🇰🇷 국내 정책 정밀 업데이트 ($NOW)"
             git push
           else
-            echo "업데이트할 새로운 데이터가 없습니다."
+            echo "새로 수집된 유의미한 데이터가 없습니다."
           fi
