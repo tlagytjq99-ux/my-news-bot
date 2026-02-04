@@ -1,0 +1,51 @@
+name: Global ICT Policy Auto Monitor
+
+# 자동 실행 조건 설정
+on:
+  schedule:
+    # 매일 한국 시간 오전 9시 (UTC 00:00) 정기 실행
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 관리자가 원할 때 수동 실행 버튼 활성화
+
+jobs:
+  ict-automation-task:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # 1. 저장소의 코드를 가상 서버로 가져오기
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. 파이썬 환경 구축
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      # 3. ICT 크롤링 필수 라이브러리 설치
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install feedparser googletrans==4.0.0-rc1 googlenewsdecoder csv urllib3
+
+      # 4. ICT 정책 크롤러 실행 (파일명이 crawler_script.py라고 가정)
+      - name: Execute Global ICT Policy Crawler
+        run: python crawler_script.py
+
+      # 5. 수집된 ICT 데이터를 저장소에 자동 반영
+      - name: Auto Commit and Push ICT Results
+        run: |
+          git config --global user.name "ICT-Policy-Bot"
+          git config --global user.email "bot@github.com"
+          
+          if [ -n "$(git status --porcelain *.csv)" ]; then
+            git add *.csv
+            git commit -m "🌐 [ICT Auto] Policy Data Updated: $(date +'%Y-%m-%d')"
+            git push
+          else
+            echo "No changes detected. Skipping commit."
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
