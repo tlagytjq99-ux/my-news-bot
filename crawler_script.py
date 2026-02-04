@@ -31,7 +31,7 @@ def classify_ict_final(text):
     return "기타 ICT 일반"
 
 def main():
-    # 🎯 대표님의 50개 주요 정책 기관 리스트 전수 반영
+    # 50개 주요 정책 기관 리스트 (동일 유지)
     gov_agencies = [
         {"국가": "미국", "기관": "백악관", "도메인": "whitehouse.gov"}, {"국가": "미국", "기관": "DOC", "도메인": "commerce.gov"},
         {"국가": "미국", "기관": "NTIA", "도메인": "ntia.gov"}, {"국가": "중국", "기관": "CAC", "도메인": "cac.gov.cn"},
@@ -65,7 +65,7 @@ def main():
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
     
-    # 🚀 확장된 ICT 산업 전반 수집 그물망
+    # 확장된 ICT 산업 수집 그물망
     must_include = [
         "AI", "DIGITAL", "ICT", "DATA", "POLICY", "인공지능", "디지털", "데이터", "정책", "기술", "전략",
         "6G", "5G", "NETWORK", "CLOUD", "TELECOM", "SPECTRUM", "인프라", "네트워크", "통신", "클라우드",
@@ -74,11 +74,10 @@ def main():
         "UAM", "MOBILITY", "양자", "로봇", "모빌리티", "자율주행", "SECURITY", "PRIVACY", "REGULATION", "보안", "규제"
     ]
 
-    print(f"📡 {collected_date} 전 세계 50개 부처 ICT 정책 전수 모니터링 가동 (기관당 5개 추출)...")
+    print(f"📡 {collected_date} 전 세계 50개 부처 ICT 정책 '핵심 1건' 수집 가동...")
 
     for agency in gov_agencies:
-        # 더 넓은 검색 모수 확보를 위해 쿼리 확장
-        query = f"site:{agency['도메인']} (AI OR Digital OR ICT OR Technology OR Telecom OR Semiconductor OR Policy)"
+        query = f"site:{agency['도메인']} (AI OR Digital OR ICT OR Technology OR Policy)"
         encoded_query = urllib.parse.quote(query)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en&gl=US"
 
@@ -86,22 +85,19 @@ def main():
             feed = feedparser.parse(rss_url)
             collected_count = 0
             for entry in feed.entries:
-                if collected_count >= 5: break # 🚀 정보원당 최대 5개 추출
+                if collected_count >= 1: break # 🚀 각 정보원마다 '딱 하나'만 추출
 
                 raw_title = entry.title.split(' - ')[0].strip()
                 if raw_title in seen_titles: continue
-                
                 if not (hasattr(entry, 'published_parsed') and entry.published_parsed[0] >= 2024): continue
+                
                 pub_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d')
-
                 try:
                     title_ko = raw_title if agency['국가'] == "대한민국" else translator.translate(raw_title, dest='ko').text
                 except: title_ko = raw_title
 
-                # 확장된 그물망 필터링
                 if not any(word in (title_ko + raw_title).upper() for word in must_include): continue
 
-                # 분류 및 링크 복구
                 category = classify_ict_final(title_ko + " " + raw_title)
                 try:
                     decoded = gnewsdecoder(entry.link)
@@ -115,18 +111,18 @@ def main():
                 seen_titles.add(raw_title)
                 collected_count += 1
             
-            print(f"✅ [{agency['국가']}] {agency['기관']} 수집 완료")
-            time.sleep(0.5)
+            print(f"✅ [{agency['국가']}] {agency['기관']} 핵심 소식 1건 확보")
+            time.sleep(0.3)
         except: continue
 
-    all_final_data.sort(key=lambda x: (x['국가'], x['기관'], x['발행일']))
-    file_name = f'Global_ICT_Intelligence_Report_{collected_date}.csv'
+    all_final_data.sort(key=lambda x: (x['국가'], x['기관']))
+    file_name = f'Global_ICT_Summary_Report_{collected_date}.csv'
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["국가", "기관", "ICT 분류", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         writer.writerows(all_final_data)
         
-    print(f"\n🚀 작업 완료! '{file_name}' 파일이 생성되었습니다.")
+    print(f"\n🚀 작업 완료! 전 세계 50대 부처의 핵심 소식이 '{file_name}'에 저장되었습니다.")
 
 if __name__ == "__main__":
     main()
