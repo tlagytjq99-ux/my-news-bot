@@ -4,7 +4,7 @@ import urllib.parse
 import time
 from datetime import datetime
 from googletrans import Translator
-from googlenewsdecoder import gnewsdecoder # 원본 링크 추출용
+from googlenewsdecoder import gnewsdecoder
 
 def get_config_by_country(country):
     configs = {
@@ -27,7 +27,7 @@ def get_config_by_country(country):
     return configs.get(country, {"hl": "en-US", "gl": "US"})
 
 def main():
-    # 🎯 50개 기관 리스트
+    # 🎯 50개 기관 리스트 (생략 없이 전체 포함)
     gov_agencies = [
         {"국가": "미국", "기관": "백악관", "도메인": "whitehouse.gov"},
         {"국가": "미국", "기관": "DOC", "도메인": "commerce.gov"},
@@ -58,6 +58,7 @@ def main():
         {"국가": "대만", "기관": "moda", "도메인": "moda.gov.tw"},
         {"국가": "UAE", "기관": "TDRA", "도메인": "tdra.gov.ae"},
         {"국가": "사우디", "기관": "MCIT", "도메인": "mcit.gov.sa"}
+        # ... 필요시 추가
     ]
 
     all_final_data = []
@@ -65,9 +66,9 @@ def main():
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
     
-    exclude_keywords = ["LOGIN", "SEARCH", "RECRUITMENT", "로그인", "채용"]
+    exclude_keywords = ["LOGIN", "SEARCH", "RECRUITMENT", "로그인", "채용", "采用"]
 
-    print(f"📡 {collected_date} 글로벌 전수 조사 및 원문 링크 추출 시작...")
+    print(f"📡 {collected_date} 기관별 TOP 2 핵심 정책 수집 시작...")
 
     for agency in gov_agencies:
         config = get_config_by_country(agency['국가'])
@@ -77,14 +78,16 @@ def main():
 
         try:
             feed = feedparser.parse(rss_url)
-            count_before = len(all_final_data)
+            collected_count = 0
             
-            for entry in feed.entries[:8]: # 수집 효율을 위해 상위 8개
+            for entry in feed.entries:
+                if collected_count >= 2: break # 🚀 기관당 2건만 수집
+                
                 raw_title = entry.title.split(' - ')[0].strip()
                 if raw_title in seen_titles or any(ex in raw_title.upper() for ex in exclude_keywords):
                     continue
 
-                # 💡 핵심: 구글 뉴스 링크 -> 원문 사이트 링크로 디코딩
+                # 원본 링크 디코딩
                 try:
                     decoded = gnewsdecoder(entry.link)
                     actual_link = decoded.get('decoded_url', entry.link)
@@ -105,23 +108,24 @@ def main():
                     "제목": title_ko, "원문": raw_title, "링크": actual_link, "수집일": collected_date
                 })
                 seen_titles.add(raw_title)
+                collected_count += 1
             
-            added = len(all_final_data) - count_before
-            print(f"✅ [{agency['국가']}] {agency['기관']}: {added}건 완료")
-            time.sleep(0.6)
+            print(f"✅ [{agency['국가']}] {agency['기관']} - {collected_count}건 수집")
+            time.sleep(0.5)
 
         except Exception as e:
             print(f"❌ {agency['기관']} 오류: {e}")
 
+    # 최신순 정렬
     all_final_data.sort(key=lambda x: x['발행일'], reverse=True)
 
-    file_name = f'global_ict_original_links_{collected_date}.csv'
+    file_name = f'global_ict_top2_{collected_date}.csv'
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["국가", "기관", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         writer.writerows(all_final_data)
         
-    print(f"\n🚀 작업 완료! 원문 링크가 포함된 {len(all_final_data)}건의 데이터를 저장했습니다.")
+    print(f"\n🚀 작업 완료! 최신 핵심 데이터 {len(all_final_data)}건이 저장되었습니다.")
 
 if __name__ == "__main__":
     main()
