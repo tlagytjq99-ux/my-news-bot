@@ -10,11 +10,8 @@ def get_localized_query(agency):
     """국가별 특성에 맞춘 최적의 검색 쿼리 생성"""
     country = agency['국가']
     domain = agency['도메인']
-    
-    # 기본 키워드 (영어권 및 범용)
     kw = '("Artificial Intelligence" OR AI OR "Digital Policy" OR ICT)'
     
-    # 국가별 현지어 보정 (수집률 극대화)
     if country == "대한민국":
         kw = '("인공지능" OR AI OR "디지털" OR "데이터")'
     elif country == "일본":
@@ -31,7 +28,7 @@ def get_localized_query(agency):
     return f'site:{domain} {kw}'
 
 def main():
-    # 🎯 대표님이 주신 50여 개 기관 전체 리스트
+    # 🎯 대표님이 제공하신 50여 개 정부기관 전체 리스트
     gov_agencies = [
         {"국가": "미국", "기관": "백악관", "도메인": "whitehouse.gov"},
         {"국가": "미국", "기관": "DOC", "도메인": "commerce.gov"},
@@ -88,14 +85,16 @@ def main():
     all_final_data = []
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
-    file_name = f'global_ict_localized_intelligence_{collected_date}.csv'
+    file_name = f'global_ict_policy_final_{collected_date}.csv'
+    
+    # 🛡️ 제외할 노이즈 제목 키워드
+    noise_keywords = ["HOMEPAGE", "PRESS RELEASES", "NEWS", "ABOUT", "PLAIN LANGUAGE", "HAKU", "WHAT'S NEW", "CONTACT US"]
 
-    print(f"📡 {collected_date} 글로벌 50개 기관 현지어 쿼리 수집 가동...")
+    print(f"📡 {collected_date} 글로벌 50개 기관 최신 데이터 수집 및 정제 시작...")
 
     for agency in gov_agencies:
-        print(f"🔍 [{agency['국가']}] {agency['기관']} 탐색 중...")
+        print(f"🔍 [{agency['국가']}] {agency['기관']} 필터링 수집 중...")
         
-        # 현지어 보정 쿼리 생성
         query = get_localized_query(agency)
         encoded_query = urllib.parse.quote(query)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
@@ -109,6 +108,20 @@ def main():
                 
                 title_en = entry.title.split(' - ')[0]
                 
+                # 1️⃣ 노이즈 필터링: 알맹이 없는 제목 제외
+                if any(noise in title_en.upper() for noise in noise_keywords):
+                    continue
+                if len(title_en.split()) < 3: # 너무 짧은 제목 제외
+                    continue
+
+                # 2️⃣ 날짜 필터링: 2024년 이후 데이터만 허용
+                pub_date = "N/A"
+                if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                    pub_year = entry.published_parsed[0]
+                    if pub_year < 2024: 
+                        continue
+                    pub_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d')
+
                 # 링크 해독
                 try:
                     decoded = gnewsdecoder(entry.link)
@@ -116,12 +129,7 @@ def main():
                 except:
                     actual_link = entry.link
 
-                # 발행일 파싱
-                pub_date = "N/A"
-                if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                    pub_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d')
-
-                # 번역 (대한민국 제외)
+                # 번역 (한국 제외)
                 try:
                     title_ko = title_en if agency['국가'] == "대한민국" else translator.translate(title_en.strip(), dest='ko').text
                 except:
@@ -138,18 +146,18 @@ def main():
                 })
                 count += 1
 
-            time.sleep(1.5) # 과도한 요청 방지
+            time.sleep(1.5) # 구글 차단 방지 매너 타임
 
         except Exception as e:
-            print(f"❌ {agency['기관']} 오류 스킵: {e}")
+            print(f"❌ {agency['기관']} 수집 오류: {e}")
 
-    # CSV 저장
+    # 💾 결과 저장 (BOM 포함 UTF-8로 엑셀 호환성 확보)
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["국가", "기관", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         writer.writerows(all_final_data)
         
-    print(f"\n✅ 수집 완료! 총 {len(all_final_data)}건의 데이터가 '{file_name}'에 저장되었습니다.")
+    print(f"\n✅ 수집 및 정제 완료! 총 {len(all_final_data)}건 저장됨.")
 
 if __name__ == "__main__":
     main()
