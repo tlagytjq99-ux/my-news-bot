@@ -6,34 +6,32 @@ from datetime import datetime
 from googletrans import Translator
 from googlenewsdecoder import gnewsdecoder
 
-def check_detailed_keywords(text):
-    """대표님이 정의한 13대 상세 분류 체계 (기술 AND 맥락 조합)"""
+def classify_ict_final(text):
+    """ICT 산업 전 영역을 아우르는 13대 정밀 분류 로직"""
     t = text.upper()
-    
-    # [분류 로직] (기술 키워드 리스트, 맥락 키워드 리스트)
     categories = {
-        "1-1. 인프라 및 네트워크": (["6G", "5G-ADVANCED", "CLOUD NATIVE"], ["ARCHITECTURE", "STANDARDIZATION", "표준", "구조"]),
-        "1-2. 지능형 플랫폼 및 데이터": (["GENERATIVE AI", "LLM", "BIG DATA", "GEN AI"], ["ENTERPRISE", "SOLUTION", "기업", "솔루션"]),
-        "1-3. 산업 융합 및 미래 기술": (["ROBOTICS", "HUMANOID", "CONNECTED CAR", "DIGITAL TWIN"], ["INDUSTRY 4.0", "COMMERCIALIZATION", "상용화", "미래"]),
-        "2-1. IT 솔루션 및 서비스": (["SAAS", "B2B SOFTWARE", "ITSM"], ["MARKET SHARE", "CLIENT CASE", "점유율", "사례"]),
-        "2-2. 통신 인프라 및 단말기": (["TELECOM EQUIPMENT", "SMARTPHONE", "BROADBAND"], ["VENDOR", "INFRASTRUCTURE", "투자", "인프라"]),
-        "2-3. 정책 및 거버넌스": (["DIGITAL REGULATION", "AI ACT", "DATA PRIVACY"], ["COMPLIANCE", "GOVERNMENT POLICY", "정부", "정책"]),
-        "3-1. 엔터테인먼트 및 플랫폼": (["OTT", "STREAMING", "WEBTOON", "CONTENT"], ["IP", "SUBSCRIPTION", "지식재산", "구독"]),
-        "3-2. 광고 및 교육": (["ADTECH", "EDTECH", "LMS"], ["PERSONALIZATION", "ADVERTISING", "개인화", "광고"]),
-        "3-3. 플랫폼 및 권리": (["DIGITAL COPYRIGHT", "NFT", "CONTENT PROTECTION"], ["MONETIZATION", "LEGAL CASE", "수익화", "소송"]),
-        "4-1. 이동수단 및 항공": (["ELECTRIC VEHICLE", "EV", "UAM", "LOGISTICS"], ["ICT INTEGRATION", "AUTONOMOUS", "통합", "자율"]),
-        "4-2. 에너지 및 자원": (["SMART GRID", "ENERGY MANAGEMENT", "RENEWABLE"], ["EFFICIENCY", "SUSTAINABILITY", "효율", "지속가능"]),
-        "4-3. 제조 및 기계": (["SMART FACTORY", "INDUSTRIAL IOT", "MAINTENANCE"], ["AUTOMATION", "MANUFACTURING", "자동화", "제조"]),
-        "4-4. 생명과학 및 소비재": (["DIGITAL HEALTH", "AGRITECH", "BIOINFORMATICS"], ["AI-DRIVEN", "INNOVATION", "기반", "혁신"])
+        "1-1. 인프라 및 네트워크": ["6G", "5G", "CLOUD", "ARCHITECTURE", "STANDARDIZATION", "표준", "인프라", "네트워크", "망", "SPECTRUM", "주파수", "INFRASTRUCTURE"],
+        "1-2. 지능형 플랫폼 및 데이터": ["GENERATIVE AI", "LLM", "BIG DATA", "GEN AI", "데이터", "지능형", "빅데이터", "ALGORITHM", "학습", "DATA"],
+        "1-3. 산업 융합 및 미래 기술": ["ROBOT", "HUMANOID", "CONNECTED CAR", "DIGITAL TWIN", "로봇", "드론", "미래", "트윈", "QUANTUM", "양자", "FUTURE"],
+        "2-1. IT 솔루션 및 서비스": ["SAAS", "B2B", "SOFTWARE", "ITSM", "소프트웨어", "솔루션", "서비스", "ERP", "SOLUTION"],
+        "2-2. 통신 인프라 및 단말기": ["TELECOM", "SMARTPHONE", "BROADBAND", "스마트폰", "통신", "브로드밴드", "기기", "DEVICE", "TERMINAL"],
+        "2-3. 정책 및 거버넌스": ["REGULATION", "AI ACT", "PRIVACY", "규제", "정책", "거버넌스", "법안", "컴플라이언스", "GOVERNANCE", "POLICY", "ETHICS"],
+        "3-1. 엔터테인먼트 및 플랫폼": ["OTT", "STREAMING", "WEBTOON", "CONTENT", "콘텐츠", "미디어", "스트리밍", "PLATFORM", "플랫폼", "MEDIA"],
+        "3-2. 광고 및 교육": ["ADTECH", "EDTECH", "LMS", "교육", "광고", "에듀테크", "LEARNING", "EDUCATION", "ADVERTISING"],
+        "3-3. 플랫폼 및 권리": ["COPYRIGHT", "NFT", "저작권", "지식재산", "IP", "BLOCKCHAIN", "블록체인", "RIGHTS"],
+        "4-1. 이동수단 및 항공": ["ELECTRIC VEHICLE", "EV", "UAM", "AUTONOMOUS", "자율주행", "전기차", "모빌리티", "항공", "DRONE", "MOBILITY"],
+        "4-2. 에너지 및 자원": ["SMART GRID", "RENEWABLE", "에너지", "그리드", "환경", "지속가능", "ENERGY", "SUSTAINABILITY"],
+        "4-3. 제조 및 기계": ["FACTORY", "IOT", "제조", "공장", "자동화", "SEMICONDUCTOR", "반도체", "CHIPS", "MANUFACTURING"],
+        "4-4. 생명과학 및 소비재": ["HEALTH", "AGRITECH", "BIO", "헬스케어", "바이오", "생명과학", "DIGITAL HEALTH", "BIOTECH"]
     }
 
-    for cat, (techs, contexts) in categories.items():
-        if any(tech in t for tech in techs) and any(ctx in t for ctx in contexts):
+    for cat, keywords in categories.items():
+        if any(kw in t for kw in keywords):
             return cat
-    return None
+    return "기타 ICT 일반"
 
 def main():
-    # 🎯 대표님의 50개 주요 정책 기관 리스트
+    # 🎯 대표님의 50개 주요 정책 기관 리스트 전수 반영
     gov_agencies = [
         {"국가": "미국", "기관": "백악관", "도메인": "whitehouse.gov"}, {"국가": "미국", "기관": "DOC", "도메인": "commerce.gov"},
         {"국가": "미국", "기관": "NTIA", "도메인": "ntia.gov"}, {"국가": "중국", "기관": "CAC", "도메인": "cac.gov.cn"},
@@ -67,11 +65,20 @@ def main():
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
     
-    print(f"📡 {collected_date} 전문 분류 기반 대량 수집 시스템 가동...")
+    # 🚀 확장된 ICT 산업 전반 수집 그물망
+    must_include = [
+        "AI", "DIGITAL", "ICT", "DATA", "POLICY", "인공지능", "디지털", "데이터", "정책", "기술", "전략",
+        "6G", "5G", "NETWORK", "CLOUD", "TELECOM", "SPECTRUM", "인프라", "네트워크", "통신", "클라우드",
+        "SEMICONDUCTOR", "CHIPS", "HARDWARE", "DEVICE", "반도체", "칩", "제조", "PLATFORM", "플랫폼",
+        "OTT", "CONTENT", "MEDIA", "WEBTOON", "콘텐츠", "미디어", "저작권", "IP", "QUANTUM", "ROBOT",
+        "UAM", "MOBILITY", "양자", "로봇", "모빌리티", "자율주행", "SECURITY", "PRIVACY", "REGULATION", "보안", "규제"
+    ]
+
+    print(f"📡 {collected_date} 전 세계 50개 부처 ICT 정책 전수 모니터링 가동 (기관당 5개 추출)...")
 
     for agency in gov_agencies:
-        # 더 넓은 수집을 위해 검색어 최적화
-        query = f"site:{agency['도메인']} (AI OR Digital OR ICT OR Technology OR Policy)"
+        # 더 넓은 검색 모수 확보를 위해 쿼리 확장
+        query = f"site:{agency['도메인']} (AI OR Digital OR ICT OR Technology OR Telecom OR Semiconductor OR Policy)"
         encoded_query = urllib.parse.quote(query)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en&gl=US"
 
@@ -79,24 +86,23 @@ def main():
             feed = feedparser.parse(rss_url)
             collected_count = 0
             for entry in feed.entries:
-                if collected_count >= 20: break # 기관당 최대 20건으로 확대 (제한 사실상 해제)
-                
+                if collected_count >= 5: break # 🚀 정보원당 최대 5개 추출
+
                 raw_title = entry.title.split(' - ')[0].strip()
                 if raw_title in seen_titles: continue
-
-                # 날짜 필터 (2024년 이후)
+                
                 if not (hasattr(entry, 'published_parsed') and entry.published_parsed[0] >= 2024): continue
                 pub_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d')
 
-                # 번역 및 분류 판단
                 try:
                     title_ko = raw_title if agency['국가'] == "대한민국" else translator.translate(raw_title, dest='ko').text
                 except: title_ko = raw_title
-                
-                # 🚀 핵심: 대표님의 13대 AND 조건 분류 로직 적용
-                category = check_detailed_keywords(title_ko + " " + raw_title)
-                if not category: continue # 조건에 맞지 않으면 과감히 제외
 
+                # 확장된 그물망 필터링
+                if not any(word in (title_ko + raw_title).upper() for word in must_include): continue
+
+                # 분류 및 링크 복구
+                category = classify_ict_final(title_ko + " " + raw_title)
                 try:
                     decoded = gnewsdecoder(entry.link)
                     actual_link = decoded.get('decoded_url', entry.link)
@@ -108,20 +114,19 @@ def main():
                 })
                 seen_titles.add(raw_title)
                 collected_count += 1
-            print(f"✅ [{agency['국가']}] {agency['기관']} 완료 ({collected_count}건)")
-            time.sleep(0.3)
+            
+            print(f"✅ [{agency['국가']}] {agency['기관']} 수집 완료")
+            time.sleep(0.5)
         except: continue
 
-    # 국가 -> 기관 -> 발행일 순 정렬
     all_final_data.sort(key=lambda x: (x['국가'], x['기관'], x['발행일']))
-
-    file_name = f'Global_ICT_Expert_Report_{collected_date}.csv'
+    file_name = f'Global_ICT_Intelligence_Report_{collected_date}.csv'
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["국가", "기관", "ICT 분류", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         writer.writerows(all_final_data)
         
-    print(f"\n🚀 작업 완료! 총 {len(all_final_data)}건의 전문 분류 데이터가 저장되었습니다.")
+    print(f"\n🚀 작업 완료! '{file_name}' 파일이 생성되었습니다.")
 
 if __name__ == "__main__":
     main()
