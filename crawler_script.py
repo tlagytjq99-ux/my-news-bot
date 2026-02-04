@@ -6,24 +6,38 @@ from datetime import datetime
 from googletrans import Translator
 from googlenewsdecoder import gnewsdecoder
 
+def classify_ict(title_text):
+    """제목의 키워드를 분석하여 4대 분류 체계로 매핑"""
+    t = title_text.upper()
+    # 1. 융합 및 하이테크 (최신 기술)
+    high_tech = ["6G", "5G", "CLOUD", "AI", "LLM", "GENERATIVE", "ROBOT", "HUMANOID", "CAR", "TWIN", "차세대", "인공지능", "하이테크", "딥테크", "QUANTUM"]
+    # 2. IT 및 통신 (전통/거버넌스)
+    it_telecom = ["SAAS", "B2B", "SOFTWARE", "TELECOM", "SMARTPHONE", "규제", "ACT", "PRIVACY", "통신", "거버넌스", "보안", "SECURITY", "COMPLIANCE"]
+    # 3. 콘텐츠 및 저작권
+    contents = ["OTT", "STREAMING", "WEBTOON", "IP", "저작권", "NFT", "광고", "ADTECH", "EDTECH", "콘텐츠", "미디어", "플랫폼", "COPYRIGHT"]
+    # 4. 수직 산업 (타 산업 융합)
+    vertical = ["EV", "UAM", "VEHICLE", "ENERGY", "GRID", "FACTORY", "IOT", "HEALTH", "BIO", "제조", "에너지", "스마트", "물류", "항공", "유통"]
+
+    if any(kw in t for kw in high_tech): return "1. 융합 및 하이테크"
+    elif any(kw in t for kw in contents): return "3. 콘텐츠 및 저작권"
+    elif any(kw in t for kw in vertical): return "4. 수직 산업"
+    elif any(kw in t for kw in it_telecom): return "2. IT 및 통신"
+    else: return "기타 ICT 일반"
+
 def get_config_by_country(country):
     configs = {
-        "대한민국": {"hl": "ko", "gl": "KR"},
-        "일본": {"hl": "ja", "gl": "JP"},
-        "중국": {"hl": "zh-CN", "gl": "CN"},
-        "대만": {"hl": "zh-TW", "gl": "TW"},
-        "프랑스": {"hl": "fr", "gl": "FR"},
-        "독일": {"hl": "de", "gl": "DE"},
-        "네덜란드": {"hl": "nl", "gl": "NL"},
-        "핀란드": {"hl": "fi", "gl": "FI"},
-        "이스라엘": {"hl": "he", "gl": "IL"},
-        "UAE": {"hl": "ar", "gl": "AE"},
-        "사우디": {"hl": "ar", "gl": "SA"}
+        "대한민국": {"hl": "ko", "gl": "KR"}, "일본": {"hl": "ja", "gl": "JP"},
+        "중국": {"hl": "zh-CN", "gl": "CN"}, "대만": {"hl": "zh-TW", "gl": "TW"},
+        "프랑스": {"hl": "fr", "gl": "FR"}, "독일": {"hl": "de", "gl": "DE"},
+        "네덜란드": {"hl": "nl", "gl": "NL"}, "핀란드": {"hl": "fi", "gl": "FI"},
+        "노르웨이": {"hl": "no", "gl": "NO"}, "스웨덴": {"hl": "sv", "gl": "SE"},
+        "덴마크": {"hl": "da", "gl": "DK"}, "이스라엘": {"hl": "he", "gl": "IL"},
+        "UAE": {"hl": "ar", "gl": "AE"}, "사우디": {"hl": "ar", "gl": "SA"}
     }
     return configs.get(country, {"hl": "en-US", "gl": "US"})
 
 def main():
-    # 🎯 50개 기관 리스트 (전체 포함 필수)
+    # 🎯 대표님이 주신 50개 기관 리스트 데이터화
     gov_agencies = [
         {"국가": "미국", "기관": "백악관", "도메인": "whitehouse.gov"},
         {"국가": "미국", "기관": "DOC", "도메인": "commerce.gov"},
@@ -40,20 +54,41 @@ def main():
         {"국가": "일본", "기관": "디지털청", "도메인": "digital.go.jp"},
         {"국가": "일본", "기관": "METI", "도메인": "meti.go.jp"},
         {"국가": "영국", "기관": "DSIT", "도메인": "gov.uk"},
+        {"국가": "영국", "기관": "DBT", "도메인": "gov.uk"},
         {"국가": "네덜란드", "기관": "EZK", "도메인": "government.nl"},
+        {"국가": "네덜란드", "기관": "Digitalisation", "도메인": "nldigitalgovernment.nl"},
         {"국가": "스웨덴", "기관": "Finance", "도메인": "government.se"},
+        {"국가": "스웨덴", "기관": "Enterprise", "도메인": "government.se"},
         {"국가": "핀란드", "기관": "LVM", "도메인": "lvm.fi"},
         {"국가": "핀란드", "기관": "MEE", "도메인": "tem.fi"},
         {"국가": "스위스", "기관": "OFCOM", "도메인": "bakom.admin.ch"},
-        {"국가": "덴마크", "기관": "DIGST", "도메인": "digst.dk"},
+        {"국가": "스위스", "기관": "WBF", "도메인": "wbf.admin.ch"},
+        {"국가": "덴마크", "기관": "Digitaliseringsstyrelsen", "도메인": "digst.dk"},
+        {"국가": "덴마크", "기관": "Erhvervsministeriet", "도메인": "em.dk"},
         {"국가": "노르웨이", "기관": "KDD", "도메인": "regjeringen.no"},
+        {"국가": "노르웨이", "기관": "NFD", "도메인": "regjeringen.no"},
         {"국가": "이스라엘", "기관": "IIA", "도메인": "innovationisrael.org.il"},
+        {"국가": "이스라엘", "기관": "MoC", "도메인": "gov.il"},
+        {"국가": "이스라엘", "기관": "Economy", "도메인": "gov.il"},
         {"국가": "캐나다", "기관": "ISED", "도메인": "ised-isde.canada.ca"},
+        {"국가": "캐나다", "기관": "TBS", "도메인": "canada.ca"},
         {"국가": "프랑스", "기관": "Bercy", "도메인": "economie.gouv.fr"},
+        {"국가": "프랑스", "기관": "DG Entreprises", "도메인": "entreprises.gouv.fr"},
+        {"국가": "호주", "기관": "DITRDCA", "도메인": "infrastructure.gov.au"},
         {"국가": "호주", "기관": "DISR", "도메인": "industry.gov.au"},
+        {"국가": "아일랜드", "기관": "DECC", "도메인": "gov.ie"},
+        {"국가": "아일랜드", "기관": "DETE", "도메인": "enterprise.gov.ie"},
+        {"국가": "오스트리아", "기관": "BMF", "도메인": "bmf.gv.at"},
+        {"국가": "오스트리아", "기관": "BMAW", "도메인": "bmaW.gv.at"},
+        {"국가": "벨기에", "기관": "연방혁신기술부", "도메인": "belspo.be"},
+        {"국가": "벨기에", "기관": "BIPT", "도메인": "bipt.be"},
+        {"국가": "벨기에", "기관": "FPS Economy", "도메인": "economie.fgov.be"},
         {"국가": "대만", "기관": "moda", "도메인": "moda.gov.tw"},
+        {"국가": "대만", "기관": "MOEA", "도메인": "moea.gov.tw"},
         {"국가": "UAE", "기관": "TDRA", "도메인": "tdra.gov.ae"},
-        {"국가": "사우디", "기관": "MCIT", "도메인": "mcit.gov.sa"}
+        {"국가": "UAE", "기관": "MoIAT", "도메인": "moiat.gov.ae"},
+        {"국가": "사우디", "기관": "MCIT", "도메인": "mcit.gov.sa"},
+        {"국가": "사우디", "기관": "MIM", "도메인": "mim.gov.sa"}
     ]
 
     all_final_data = []
@@ -61,17 +96,10 @@ def main():
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
     
-    # 🚫 노이즈 차단 목록 (강화)
-    exclude_keywords = [
-        "게시판 인쇄", "로그인", "LOGIN", "SEARCH", "RECRUITMENT", "채용", "採用", 
-        "CONTACT US", "ABOUT US", "홈페이지", "HOME", "FAQ", "Q&A", "FORM", 
-        "비밀번호", "PASSWORD", "SIGN IN", "SIGN UP", "OFFICIAL SITE"
-    ]
+    exclude_keywords = ["게시판 인쇄", "로그인", "LOGIN", "SEARCH", "RECRUITMENT", "채용", "采用", "FAQ"]
+    must_include = ["AI", "DIGITAL", "ICT", "DATA", "POLICY", "인공지능", "디지털", "데이터", "전략", "기술"]
 
-    # ✅ 필수 기술 키워드 (이 단어들이 있어야 정책으로 간주)
-    must_include = ["AI", "인공지능", "디지털", "DIGITAL", "ICT", "DATA", "데이터", "POLICY", "정책", "STRATEGY", "전략"]
-
-    print(f"📡 {collected_date} 기관별 정렬 및 필터링 수집 가동...")
+    print(f"📡 {collected_date} 글로벌 50개 부처 ICT 정책 전수 조사 시작...")
 
     for agency in gov_agencies:
         config = get_config_by_country(agency['국가'])
@@ -87,34 +115,32 @@ def main():
                 if collected_count >= 2: break 
                 
                 raw_title = entry.title.split(' - ')[0].strip()
-                upper_title = raw_title.upper()
-                
-                # [필터] 중복, 노이즈, 키워드 미포함 시 패스
-                if raw_title in seen_titles: continue
-                if any(ex in upper_title for ex in exclude_keywords): continue
-                if not any(must in upper_title for must in must_include): continue
+                if raw_title in seen_titles or any(ex in raw_title.upper() for ex in exclude_keywords):
+                    continue
 
-                # [필터] 날짜 (2024년 이후만)
                 if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                    pub_year = entry.published_parsed[0]
-                    if pub_year < 2024: continue
+                    if entry.published_parsed[0] < 2024: continue
                     pub_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d')
                 else: continue
 
-                # 원본 링크 디코딩
+                try:
+                    title_ko = raw_title if agency['국가'] == "대한민국" else translator.translate(raw_title, dest='ko').text
+                except: title_ko = raw_title
+                
+                # 분류 로직 적용
+                ict_category = classify_ict(title_ko + " " + raw_title)
+
+                if not any(word in (title_ko + raw_title).upper() for word in must_include):
+                    continue
+
                 try:
                     decoded = gnewsdecoder(entry.link)
                     actual_link = decoded.get('decoded_url', entry.link)
                 except: actual_link = entry.link
 
-                # 번역
-                try:
-                    title_ko = raw_title if agency['국가'] == "대한민국" else translator.translate(raw_title, dest='ko').text
-                except: title_ko = raw_title
-                
                 all_final_data.append({
-                    "국가": agency["국가"], "기관": agency["기관"], "발행일": pub_date,
-                    "제목": title_ko, "원문": raw_title, "링크": actual_link, "수집일": collected_date
+                    "국가": agency["국가"], "기관": agency["기관"], "ICT 분류": ict_category,
+                    "발행일": pub_date, "제목": title_ko, "원문": raw_title, "링크": actual_link, "수집일": collected_date
                 })
                 seen_titles.add(raw_title)
                 collected_count += 1
@@ -123,16 +149,16 @@ def main():
             time.sleep(0.5)
         except: continue
 
-    # 🗂️ 핵심 수정: 국가별 -> 기관별 가나다순 정렬
-    all_final_data.sort(key=lambda x: (x['국가'], x['기관'], x['발행일']), reverse=False)
+    # 국가 -> 기관 -> 발행일 순 정렬
+    all_final_data.sort(key=lambda x: (x['국가'], x['기관'], x['발행일']))
 
-    file_name = f'global_ict_report_sorted_{collected_date}.csv'
+    file_name = f'ICT_Global_50_Report_{collected_date}.csv'
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
-        writer = csv.DictWriter(f, fieldnames=["국가", "기관", "발행일", "제목", "원문", "링크", "수집일"])
+        writer = csv.DictWriter(f, fieldnames=["국가", "기관", "ICT 분류", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         writer.writerows(all_final_data)
         
-    print(f"\n🚀 정렬 완료! '{file_name}' 파일을 확인해 보세요.")
+    print(f"\n🚀 전체 수집 완료! '{file_name}' 파일을 확인하세요.")
 
 if __name__ == "__main__":
     main()
