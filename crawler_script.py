@@ -6,37 +6,34 @@ from datetime import datetime
 from googletrans import Translator
 from googlenewsdecoder import gnewsdecoder
 
-def classify_ict(title_text):
-    """대표님이 정의한 4대 ICT 분류 체계 자동 매핑"""
-    t = title_text.upper()
+def check_detailed_keywords(text):
+    """대표님이 정의한 13대 상세 분류 체계 (기술 AND 맥락 조합)"""
+    t = text.upper()
     
-    # 1. 융합 및 하이테크 (미래 기술)
-    high_tech = ["6G", "5G-ADVANCED", "CLOUD NATIVE", "GENERATIVE AI", "LLM", "BIG DATA", "ROBOTICS", "HUMANOID", "CONNECTED CAR", "DIGITAL TWIN", "AI", "인공지능", "차세대", "하이테크"]
-    # 2. IT 및 통신 (전통 IT/정책)
-    it_telecom = ["SAAS", "B2B SOFTWARE", "ITSM", "TELECOM", "SMARTPHONE", "BROADBAND", "DIGITAL REGULATION", "AI ACT", "DATA PRIVACY", "거버넌스", "규제", "보안", "보호", "통신"]
-    # 3. 콘텐츠 및 저작권
-    contents = ["OTT", "STREAMING", "WEBTOON", "IMMERSIVE", "ADTECH", "EDTECH", "DIGITAL COPYRIGHT", "NFT", "저작권", "IP", "플랫폼", "콘텐츠", "미디어"]
-    # 4. 수직 산업 (타 산업 융합)
-    vertical = ["ELECTRIC VEHICLE", "EV", "UAM", "SMART LOGISTICS", "SMART GRID", "ENERGY MANAGEMENT", "SMART FACTORY", "INDUSTRIAL IOT", "DIGITAL HEALTH", "AGRITECH", "제조", "에너지", "항공", "스마트"]
-
-    if any(kw in t for kw in high_tech): return "1. 융합 및 하이테크"
-    elif any(kw in t for kw in contents): return "3. 콘텐츠 및 저작권"
-    elif any(kw in t for kw in vertical): return "4. 수직 산업"
-    elif any(kw in t for kw in it_telecom): return "2. IT 및 통신"
-    else: return "기타 ICT 일반"
-
-def get_config_by_country(country):
-    configs = {
-        "대한민국": {"hl": "ko", "gl": "KR"}, "일본": {"hl": "ja", "gl": "JP"}, "중국": {"hl": "zh-CN", "gl": "CN"},
-        "대만": {"hl": "zh-TW", "gl": "TW"}, "프랑스": {"hl": "fr", "gl": "FR"}, "독일": {"hl": "de", "gl": "DE"},
-        "네덜란드": {"hl": "nl", "gl": "NL"}, "핀란드": {"hl": "fi", "gl": "FI"}, "노르웨이": {"hl": "no", "gl": "NO"},
-        "스웨덴": {"hl": "sv", "gl": "SE"}, "덴마크": {"hl": "da", "gl": "DK"}, "이스라엘": {"hl": "he", "gl": "IL"},
-        "UAE": {"hl": "ar", "gl": "AE"}, "사우디": {"hl": "ar", "gl": "SA"}, "오스트리아": {"hl": "de", "gl": "AT"}
+    # [분류 로직] (기술 키워드 리스트, 맥락 키워드 리스트)
+    categories = {
+        "1-1. 인프라 및 네트워크": (["6G", "5G-ADVANCED", "CLOUD NATIVE"], ["ARCHITECTURE", "STANDARDIZATION", "표준", "구조"]),
+        "1-2. 지능형 플랫폼 및 데이터": (["GENERATIVE AI", "LLM", "BIG DATA", "GEN AI"], ["ENTERPRISE", "SOLUTION", "기업", "솔루션"]),
+        "1-3. 산업 융합 및 미래 기술": (["ROBOTICS", "HUMANOID", "CONNECTED CAR", "DIGITAL TWIN"], ["INDUSTRY 4.0", "COMMERCIALIZATION", "상용화", "미래"]),
+        "2-1. IT 솔루션 및 서비스": (["SAAS", "B2B SOFTWARE", "ITSM"], ["MARKET SHARE", "CLIENT CASE", "점유율", "사례"]),
+        "2-2. 통신 인프라 및 단말기": (["TELECOM EQUIPMENT", "SMARTPHONE", "BROADBAND"], ["VENDOR", "INFRASTRUCTURE", "투자", "인프라"]),
+        "2-3. 정책 및 거버넌스": (["DIGITAL REGULATION", "AI ACT", "DATA PRIVACY"], ["COMPLIANCE", "GOVERNMENT POLICY", "정부", "정책"]),
+        "3-1. 엔터테인먼트 및 플랫폼": (["OTT", "STREAMING", "WEBTOON", "CONTENT"], ["IP", "SUBSCRIPTION", "지식재산", "구독"]),
+        "3-2. 광고 및 교육": (["ADTECH", "EDTECH", "LMS"], ["PERSONALIZATION", "ADVERTISING", "개인화", "광고"]),
+        "3-3. 플랫폼 및 권리": (["DIGITAL COPYRIGHT", "NFT", "CONTENT PROTECTION"], ["MONETIZATION", "LEGAL CASE", "수익화", "소송"]),
+        "4-1. 이동수단 및 항공": (["ELECTRIC VEHICLE", "EV", "UAM", "LOGISTICS"], ["ICT INTEGRATION", "AUTONOMOUS", "통합", "자율"]),
+        "4-2. 에너지 및 자원": (["SMART GRID", "ENERGY MANAGEMENT", "RENEWABLE"], ["EFFICIENCY", "SUSTAINABILITY", "효율", "지속가능"]),
+        "4-3. 제조 및 기계": (["SMART FACTORY", "INDUSTRIAL IOT", "MAINTENANCE"], ["AUTOMATION", "MANUFACTURING", "자동화", "제조"]),
+        "4-4. 생명과학 및 소비재": (["DIGITAL HEALTH", "AGRITECH", "BIOINFORMATICS"], ["AI-DRIVEN", "INNOVATION", "기반", "혁신"])
     }
-    return configs.get(country, {"hl": "en-US", "gl": "US"})
+
+    for cat, (techs, contexts) in categories.items():
+        if any(tech in t for tech in techs) and any(ctx in t for ctx in contexts):
+            return cat
+    return None
 
 def main():
-    # 🎯 대표님의 50개 주요 정책 기관 리스트 전수 반영
+    # 🎯 대표님의 50개 주요 정책 기관 리스트
     gov_agencies = [
         {"국가": "미국", "기관": "백악관", "도메인": "whitehouse.gov"}, {"국가": "미국", "기관": "DOC", "도메인": "commerce.gov"},
         {"국가": "미국", "기관": "NTIA", "도메인": "ntia.gov"}, {"국가": "중국", "기관": "CAC", "도메인": "cac.gov.cn"},
@@ -70,67 +67,61 @@ def main():
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
     
-    # 🚀 수집 필수 키워드 (분류 체계 전문 용어 통합)
-    must_include = [
-        "AI", "DIGITAL", "ICT", "DATA", "POLICY", "인공지능", "디지털", "데이터", "전략", "기술",
-        "6G", "5G", "CLOUD", "LLM", "ROBOT", "UAM", "SAAS", "OTT", "IP", "EV", "보안", "규제",
-        "플랫폼", "저작권", "스마트", "제조", "혁신", "네트워크", "SECURITY", "CHIPS", "반도체"
-    ]
-    exclude_keywords = ["게시판 인쇄", "로그인", "LOGIN", "SEARCH", "RECRUITMENT", "채용", "采用", "FAQ"]
-
-    print(f"📡 {collected_date} 전 세계 50개 부처 ICT 정책 전수 모니터링 가동...")
+    print(f"📡 {collected_date} 전문 분류 기반 대량 수집 시스템 가동...")
 
     for agency in gov_agencies:
-        config = get_config_by_country(agency['국가'])
-        query = f"site:{agency['도메인']} (AI OR Digital OR ICT OR Tech OR Policy)"
+        # 더 넓은 수집을 위해 검색어 최적화
+        query = f"site:{agency['도메인']} (AI OR Digital OR ICT OR Technology OR Policy)"
         encoded_query = urllib.parse.quote(query)
-        rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl={config['hl']}&gl={config['gl']}&ceid={config['gl']}:{config['hl']}"
+        rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en&gl=US"
 
         try:
             feed = feedparser.parse(rss_url)
             collected_count = 0
             for entry in feed.entries:
-                if collected_count >= 2: break 
+                if collected_count >= 20: break # 기관당 최대 20건으로 확대 (제한 사실상 해제)
+                
                 raw_title = entry.title.split(' - ')[0].strip()
-                if raw_title in seen_titles or any(ex in raw_title.upper() for ex in exclude_keywords): continue
+                if raw_title in seen_titles: continue
 
-                if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                    if entry.published_parsed[0] < 2024: continue
-                    pub_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d')
-                else: continue
+                # 날짜 필터 (2024년 이후)
+                if not (hasattr(entry, 'published_parsed') and entry.published_parsed[0] >= 2024): continue
+                pub_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d')
 
+                # 번역 및 분류 판단
                 try:
                     title_ko = raw_title if agency['국가'] == "대한민국" else translator.translate(raw_title, dest='ko').text
                 except: title_ko = raw_title
                 
-                # 하나라도 필수 키워드가 포함되어야 수집
-                if not any(word in (title_ko + raw_title).upper() for word in must_include): continue
+                # 🚀 핵심: 대표님의 13대 AND 조건 분류 로직 적용
+                category = check_detailed_keywords(title_ko + " " + raw_title)
+                if not category: continue # 조건에 맞지 않으면 과감히 제외
 
-                ict_category = classify_ict(title_ko + " " + raw_title)
                 try:
                     decoded = gnewsdecoder(entry.link)
                     actual_link = decoded.get('decoded_url', entry.link)
                 except: actual_link = entry.link
 
                 all_final_data.append({
-                    "국가": agency["국가"], "기관": agency["기관"], "ICT 분류": ict_category,
+                    "국가": agency["국가"], "기관": agency["기관"], "ICT 분류": category,
                     "발행일": pub_date, "제목": title_ko, "원문": raw_title, "링크": actual_link, "수집일": collected_date
                 })
                 seen_titles.add(raw_title)
                 collected_count += 1
-            print(f"✅ [{agency['국가']}] {agency['기관']} 완료")
-            time.sleep(0.5)
+            print(f"✅ [{agency['국가']}] {agency['기관']} 완료 ({collected_count}건)")
+            time.sleep(0.3)
         except: continue
 
+    # 국가 -> 기관 -> 발행일 순 정렬
     all_final_data.sort(key=lambda x: (x['국가'], x['기관'], x['발행일']))
 
-    file_name = f'Global_ICT_Intelligence_Report_{collected_date}.csv'
+    file_name = f'Global_ICT_Expert_Report_{collected_date}.csv'
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["국가", "기관", "ICT 분류", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         writer.writerows(all_final_data)
         
-    print(f"\n🚀 작업 종료! 총 {len(all_final_data)}건의 고순도 정책 데이터가 '{file_name}'에 저장되었습니다.")
+    print(f"\n🚀 작업 완료! 총 {len(all_final_data)}건의 전문 분류 데이터가 저장되었습니다.")
 
 if __name__ == "__main__":
     main()
