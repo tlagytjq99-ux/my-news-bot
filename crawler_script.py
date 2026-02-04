@@ -14,11 +14,7 @@ def get_config_by_country(country):
         "대만": {"hl": "zh-TW", "gl": "TW"},
         "프랑스": {"hl": "fr", "gl": "FR"},
         "독일": {"hl": "de", "gl": "DE"},
-        "오스트리아": {"hl": "de", "gl": "AT"},
         "네덜란드": {"hl": "nl", "gl": "NL"},
-        "노르웨이": {"hl": "no", "gl": "NO"},
-        "스웨덴": {"hl": "sv", "gl": "SE"},
-        "덴마크": {"hl": "da", "gl": "DK"},
         "핀란드": {"hl": "fi", "gl": "FI"},
         "이스라엘": {"hl": "he", "gl": "IL"},
         "UAE": {"hl": "ar", "gl": "AE"},
@@ -27,7 +23,7 @@ def get_config_by_country(country):
     return configs.get(country, {"hl": "en-US", "gl": "US"})
 
 def main():
-    # 🎯 50개 기관 리스트 (생략 없이 전체 포함)
+    # 🎯 50개 기관 리스트 (전체 포함 필수)
     gov_agencies = [
         {"국가": "미국", "기관": "백악관", "도메인": "whitehouse.gov"},
         {"국가": "미국", "기관": "DOC", "도메인": "commerce.gov"},
@@ -58,7 +54,6 @@ def main():
         {"국가": "대만", "기관": "moda", "도메인": "moda.gov.tw"},
         {"국가": "UAE", "기관": "TDRA", "도메인": "tdra.gov.ae"},
         {"국가": "사우디", "기관": "MCIT", "도메인": "mcit.gov.sa"}
-        # ... 필요시 추가
     ]
 
     all_final_data = []
@@ -66,9 +61,17 @@ def main():
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
     
-    exclude_keywords = ["LOGIN", "SEARCH", "RECRUITMENT", "로그인", "채용", "采用"]
+    # 🚫 노이즈 차단 목록 (강화)
+    exclude_keywords = [
+        "게시판 인쇄", "로그인", "LOGIN", "SEARCH", "RECRUITMENT", "채용", "採用", 
+        "CONTACT US", "ABOUT US", "홈페이지", "HOME", "FAQ", "Q&A", "FORM", 
+        "비밀번호", "PASSWORD", "SIGN IN", "SIGN UP", "OFFICIAL SITE"
+    ]
 
-    print(f"📡 {collected_date} 기관별 TOP 2 핵심 정책 수집 시작...")
+    # ✅ 필수 기술 키워드 (이 단어들이 있어야 정책으로 간주)
+    must_include = ["AI", "인공지능", "디지털", "DIGITAL", "ICT", "DATA", "데이터", "POLICY", "정책", "STRATEGY", "전략"]
+
+    print(f"📡 {collected_date} 기관별 정렬 및 필터링 수집 가동...")
 
     for agency in gov_agencies:
         config = get_config_by_country(agency['국가'])
@@ -81,27 +84,33 @@ def main():
             collected_count = 0
             
             for entry in feed.entries:
-                if collected_count >= 2: break # 🚀 기관당 2건만 수집
+                if collected_count >= 2: break 
                 
                 raw_title = entry.title.split(' - ')[0].strip()
-                if raw_title in seen_titles or any(ex in raw_title.upper() for ex in exclude_keywords):
-                    continue
+                upper_title = raw_title.upper()
+                
+                # [필터] 중복, 노이즈, 키워드 미포함 시 패스
+                if raw_title in seen_titles: continue
+                if any(ex in upper_title for ex in exclude_keywords): continue
+                if not any(must in upper_title for must in must_include): continue
+
+                # [필터] 날짜 (2024년 이후만)
+                if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                    pub_year = entry.published_parsed[0]
+                    if pub_year < 2024: continue
+                    pub_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d')
+                else: continue
 
                 # 원본 링크 디코딩
                 try:
                     decoded = gnewsdecoder(entry.link)
                     actual_link = decoded.get('decoded_url', entry.link)
-                except:
-                    actual_link = entry.link
+                except: actual_link = entry.link
 
-                pub_date = collected_date
-                if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                    pub_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d')
-
+                # 번역
                 try:
                     title_ko = raw_title if agency['국가'] == "대한민국" else translator.translate(raw_title, dest='ko').text
-                except:
-                    title_ko = raw_title
+                except: title_ko = raw_title
                 
                 all_final_data.append({
                     "국가": agency["국가"], "기관": agency["기관"], "발행일": pub_date,
@@ -110,22 +119,20 @@ def main():
                 seen_titles.add(raw_title)
                 collected_count += 1
             
-            print(f"✅ [{agency['국가']}] {agency['기관']} - {collected_count}건 수집")
+            print(f"✅ [{agency['국가']}] {agency['기관']} 완료")
             time.sleep(0.5)
+        except: continue
 
-        except Exception as e:
-            print(f"❌ {agency['기관']} 오류: {e}")
+    # 🗂️ 핵심 수정: 국가별 -> 기관별 가나다순 정렬
+    all_final_data.sort(key=lambda x: (x['국가'], x['기관'], x['발행일']), reverse=False)
 
-    # 최신순 정렬
-    all_final_data.sort(key=lambda x: x['발행일'], reverse=True)
-
-    file_name = f'global_ict_top2_{collected_date}.csv'
+    file_name = f'global_ict_report_sorted_{collected_date}.csv'
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["국가", "기관", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         writer.writerows(all_final_data)
         
-    print(f"\n🚀 작업 완료! 최신 핵심 데이터 {len(all_final_data)}건이 저장되었습니다.")
+    print(f"\n🚀 정렬 완료! '{file_name}' 파일을 확인해 보세요.")
 
 if __name__ == "__main__":
     main()
