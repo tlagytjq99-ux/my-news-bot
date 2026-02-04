@@ -6,36 +6,36 @@ from datetime import datetime
 from googletrans import Translator
 from googlenewsdecoder import gnewsdecoder
 
-def is_valuable_policy(text):
-    """행정 노이즈를 걸러내고 실제 가치 있는 정책/산업 소식인지 판별"""
+def is_industry_ict(text):
+    """일반 행정/거대 담론을 제외하고 오직 'ICT 산업 기술'에만 집중"""
     t = text.upper()
     
-    # ❌ 1. 행정/노이즈 키워드 (이 단어들이 있으면 즉시 탈락)
-    # 대표님이 말씀하신 '입국', '웹사이트 방문', '교사 채용', '사회보험' 등을 차단
-    administrative_noise = [
-        "VISA", "FOREIGN NATIONALS", "ENTRY", "SOCIAL INSURANCE", "SIN ", 
-        "TEACHER", "VACANCY", "JOB ", "RECRUITMENT", "VISIT JAPAN", "ARRIVAL CARD",
-        "비자", "입국", "사회보험", "채용", "교사", "뉴스레터", "NEWSLETTER", "WELCOME TO",
-        "RAMADAN", "라마단", "ANNIVERSARY", "CLIMATE", "기후", "CULTURE", "문화"
+    # ❌ 1. ICT와 무관한 도메인 (에너지, 원자력, 청소년, 노동, 보건 일반 등)
+    non_ict_sectors = [
+        "NUCLEAR", "REACTOR", "YOUTH", "LABOR", "CLIMATE", "ENERGY", "TRACFIN", 
+        "VISA", "ENTRY", "IMMIGRATION", "SOCIAL INSURANCE", "HEALTHCARE", "VACCINE",
+        "원자로", "원자력", "청소년", "노동", "기후", "에너지", "사회보험", "비자", "입국", "백신"
     ]
-    if any(noise in t for noise in administrative_noise):
+    if any(sector in t for sector in non_ict_sectors):
         return False
 
-    # ✅ 2. 반드시 포함되어야 할 산업/정책 핵심 키워드 (화이트리스트)
-    # 단순히 'Digital'만 있는 게 아니라, 아래 산업 용어가 섞여야 실질적인 소식임
-    policy_keywords = [
-        "AI", "SEMICONDUCTOR", "CHIPS", "STRATEGY", "REGULATION", "ACT", "POLICY", 
-        "6G", "5G", "QUANTUM", "CYBERSECURITY", "DATA", "PLATFORM", "UAM", "EV ",
-        "전략", "규제", "반도체", "양자", "보안", "인프라", "협력", "이니셔티브", "혁신"
+    # ✅ 2. 실질적 ICT 핵심 기술 (이 단어들이 제목에 직접 나타나야 함)
+    # 단순 'Digital'이나 'ICT' 단독 사용은 필터링 강도를 높이기 위해 제외하거나 조합함
+    ict_core_tech = [
+        "AI ", "GEN AI", "LLM", "SEMICONDUCTOR", "CHIPS", "6G", "5G", "QUANTUM", 
+        "CYBER", "ROBOT", "UAM", "PLATFORM", "SOFTWARE", "SAAS", "DATA CENTER",
+        "반도체", "인공지능", "양자", "로봇", "소프트웨어", "데이터센터", "보안", "자율주행"
     ]
-    return any(kw in t for kw in policy_keywords)
+    
+    # 핵심 기술어가 하나라도 포함되어야 함
+    return any(tech in t for tech in ict_core_tech)
 
 def classify_ict_refined(text):
     """13대 정밀 분류 로직"""
     t = text.upper()
     categories = {
-        "1-1. 인프라 및 네트워크": ["6G", "5G", "CLOUD", "NETWORK", "네트워크", "주파수"],
-        "1-2. 지능형 플랫폼 및 데이터": ["GENERATIVE AI", "LLM", "BIG DATA", "데이터", "지능형"],
+        "1-1. 인프라 및 네트워크": ["6G", "5G", "CLOUD", "NETWORK", "데이터센터", "주파수"],
+        "1-2. 지능형 플랫폼 및 데이터": ["GENERATIVE AI", "LLM", "BIG DATA", "데이터", "지능형", "GEN AI"],
         "1-3. 산업 융합 및 미래 기술": ["ROBOT", "DIGITAL TWIN", "로봇", "양자", "QUANTUM"],
         "2-1. IT 솔루션 및 서비스": ["SAAS", "B2B", "SOFTWARE", "소프트웨어", "솔루션"],
         "2-2. 통신 인프라 및 단말기": ["TELECOM", "SMARTPHONE", "통신", "단말", "기기"],
@@ -53,7 +53,6 @@ def classify_ict_refined(text):
     return "기타 ICT 일반"
 
 def main():
-    # 50개 주요 부처 리스트
     gov_agencies = [
         {"국가": "미국", "기관": "백악관", "도메인": "whitehouse.gov"}, {"국가": "미국", "기관": "DOC", "도메인": "commerce.gov"},
         {"국가": "미국", "기관": "NTIA", "도메인": "ntia.gov"}, {"국가": "중국", "기관": "CAC", "도메인": "cac.gov.cn"},
@@ -87,11 +86,11 @@ def main():
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
 
-    print(f"📡 {collected_date} 행정 노이즈 완전 차단 모드 가동 (기관당 핵심 1건)...")
+    print(f"📡 {collected_date} ICT 산업 현안 정밀 수집 모드 가동...")
 
     for agency in gov_agencies:
-        # 검색 단계에서부터 기술 중심으로 한정
-        query = f"site:{agency['도메인']} (AI OR Semiconductor OR 'Digital Strategy' OR 'ICT Policy')"
+        # 검색 쿼리에서 'Policy'나 'Strategy'를 빼고 실제 기술 키워드 중심 검색
+        query = f"site:{agency['도메인']} (AI OR Semiconductor OR '6G' OR Cybersecurity OR Quantum)"
         encoded_query = urllib.parse.quote(query)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en&gl=US"
 
@@ -99,14 +98,14 @@ def main():
             feed = feedparser.parse(rss_url)
             collected_count = 0
             for entry in feed.entries:
-                if collected_count >= 1: break # 기관당 1개
+                if collected_count >= 1: break 
 
                 raw_title = entry.title.split(' - ')[0].strip()
                 if raw_title in seen_titles: continue
                 if not (hasattr(entry, 'published_parsed') and entry.published_parsed[0] >= 2024): continue
                 
-                # 🚀 핵심 필터: 행정 노이즈면 버리고, 산업적 가치가 있어야만 통과
-                if not is_valuable_policy(raw_title):
+                # 🚀 3차 보정 필터: 산업 기술명이 직접 포함되어야 함
+                if not is_industry_ict(raw_title):
                     continue
 
                 pub_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d')
@@ -127,17 +126,17 @@ def main():
                 seen_titles.add(raw_title)
                 collected_count += 1
             
-            print(f"✅ [{agency['국가']}] {agency['기관']} 필터링 완료")
+            print(f"✅ [{agency['국가']}] {agency['기관']} 산업 필터 완료")
             time.sleep(0.3)
         except: continue
 
-    file_name = f'Global_ICT_Intelligence_Final_{collected_date}.csv'
+    file_name = f'Global_ICT_Industry_Focus_{collected_date}.csv'
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["국가", "기관", "ICT 분류", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         writer.writerows(all_final_data)
         
-    print(f"\n🚀 작업 완료! 정제된 핵심 리포트가 '{file_name}'에 저장되었습니다.")
+    print(f"\n🚀 작업 완료! 진짜 ICT 뉴스만 담긴 리포트가 '{file_name}'에 저장되었습니다.")
 
 if __name__ == "__main__":
     main()
