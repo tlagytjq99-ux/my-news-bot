@@ -6,54 +6,97 @@ from datetime import datetime
 from googletrans import Translator
 from googlenewsdecoder import gnewsdecoder
 
+def get_localized_query(agency):
+    """국가별 특성에 맞춘 최적의 검색 쿼리 생성"""
+    country = agency['국가']
+    domain = agency['도메인']
+    
+    # 기본 키워드 (영어권 및 범용)
+    kw = '("Artificial Intelligence" OR AI OR "Digital Policy" OR ICT)'
+    
+    # 국가별 현지어 보정 (수집률 극대화)
+    if country == "대한민국":
+        kw = '("인공지능" OR AI OR "디지털" OR "데이터")'
+    elif country == "일본":
+        kw = '("人工知能" OR AI OR "デジタル政策" OR "ICT")'
+    elif country in ["중국", "대만"]:
+        kw = '("人工智能" OR AI OR "数字化" OR "通信")'
+    elif country in ["독일", "오스트리아"]:
+        kw = '("Künstliche Intelligenz" OR KI OR "Digitalisierung")'
+    elif country == "프랑스":
+        kw = '("Intelligence Artificielle" OR IA OR "Numérique")'
+    elif country in ["노르웨이", "스웨덴", "덴마크", "핀란드"]:
+        kw = '("Artificial Intelligence" OR AI OR "Digitalisering")'
+        
+    return f'site:{domain} {kw}'
+
 def main():
-    # 🎯 도메인 주소에서 https:// 및 하위 경로를 제거하여 검색 정확도를 높였습니다.
+    # 🎯 대표님이 주신 50여 개 기관 전체 리스트
     gov_agencies = [
         {"국가": "미국", "기관": "백악관", "도메인": "whitehouse.gov"},
-        {"국가": "미국", "기관": "DOC (상무부)", "도메인": "commerce.gov"},
+        {"국가": "미국", "기관": "DOC", "도메인": "commerce.gov"},
         {"국가": "미국", "기관": "NTIA", "도메인": "ntia.gov"},
-        {"국가": "중국", "기관": "CAC (사이버공간관리국)", "도메인": "cac.gov.cn"},
-        {"국가": "중국", "기관": "MIIT (공업정보화부)", "도메인": "miit.gov.cn"},
+        {"국가": "중국", "기관": "CAC", "도메인": "cac.gov.cn"},
+        {"국가": "중국", "기관": "MIIT", "도메인": "miit.gov.cn"},
         {"국가": "대한민국", "기관": "과학기술정보통신부", "도메인": "msit.go.kr"},
         {"국가": "대한민국", "기관": "산업통상자원부", "도메인": "motie.go.kr"},
         {"국가": "싱가포르", "기관": "MDDI", "도메인": "mddi.gov.sg"},
         {"국가": "싱가포르", "기관": "IMDA", "도메인": "imda.gov.sg"},
         {"국가": "독일", "기관": "BMDV", "도메인": "bmdv.bund.de"},
         {"국가": "독일", "기관": "BMWK", "도메인": "bmwk.de"},
-        {"국가": "일본", "기관": "MIC (총무성)", "도메인": "soumu.go.jp"},
+        {"국가": "일본", "기관": "MIC", "도메인": "soumu.go.jp"},
         {"국가": "일본", "기관": "디지털청", "도메인": "digital.go.jp"},
-        {"국가": "일본", "기관": "METI (경제산업성)", "도메인": "meti.go.jp"},
-        {"국가": "영국", "기관": "DSIT", "도메인": "www.gov.uk/government/organisations/department-for-science-innovation-and-technology"},
-        {"국가": "영국", "기관": "DBT", "도메인": "www.gov.uk/government/organisations/department-for-business-and-trade"},
+        {"국가": "일본", "기관": "METI", "도메인": "meti.go.jp"},
+        {"국가": "영국", "기관": "DSIT", "도메인": "gov.uk/government/organisations/department-for-science-innovation-and-technology"},
+        {"국가": "영국", "기관": "DBT", "도메인": "gov.uk/government/organisations/department-for-business-and-trade"},
         {"국가": "네덜란드", "기관": "EZK", "도메인": "government.nl"},
-        {"국가": "스웨덴", "기관": "Ministry of Finance", "도메인": "government.se"},
+        {"국가": "네덜란드", "기관": "Digitalisation", "도메인": "nldigitalgovernment.nl"},
+        {"국가": "스웨덴", "기관": "Finance", "도메인": "government.se/government-of-sweden/ministry-of-finance"},
+        {"국가": "스웨덴", "기관": "Climate", "도메인": "government.se/government-of-sweden/ministry-of-climate-and-enterprise"},
         {"국가": "핀란드", "기관": "LVM", "도메인": "lvm.fi"},
         {"국가": "핀란드", "기관": "MEE", "도메인": "tem.fi"},
         {"국가": "스위스", "기관": "OFCOM", "도메인": "bakom.admin.ch"},
+        {"국가": "스위스", "기관": "WBF", "도메인": "wbf.admin.ch"},
         {"국가": "덴마크", "기관": "Digitaliseringsstyrelsen", "도메인": "digst.dk"},
-        {"국가": "노르웨이", "기관": "KDD", "도메인": "regjeringen.no"},
+        {"국가": "덴마크", "기관": "Erhvervsministeriet", "도메인": "em.dk"},
+        {"국가": "노르웨이", "기관": "KDD", "도메인": "regjeringen.no/en/dep/kdd"},
+        {"국가": "노르웨이", "기관": "NFD", "도메인": "regjeringen.no/en/dep/nfd"},
         {"국가": "이스라엘", "기관": "IIA", "도메인": "innovationisrael.org.il"},
+        {"국가": "이스라엘", "기관": "MoC", "도메인": "gov.il/en/departments/ministry_of_communications"},
+        {"국가": "이스라엘", "기관": "Economy", "도메인": "gov.il/en/departments/ministry_of_economy"},
         {"국가": "캐나다", "기관": "ISED", "도메인": "ised-isde.canada.ca"},
+        {"국가": "캐나다", "기관": "TBS", "도메인": "canada.ca/en/treasury-board-secretariat"},
         {"국가": "프랑스", "기관": "Bercy", "도메인": "economie.gouv.fr"},
+        {"국가": "프랑스", "기관": "DG Entreprises", "도메인": "entreprises.gouv.fr"},
+        {"국가": "호주", "기관": "DITRDCA", "도메인": "infrastructure.gov.au"},
         {"국가": "호주", "기관": "DISR", "도메인": "industry.gov.au"},
+        {"국가": "아일랜드", "기관": "DECC", "도메인": "gov.ie/en/organisation/department-of-the-environment-climate-and-communications"},
+        {"국가": "아일랜드", "기관": "DETE", "도메인": "enterprise.gov.ie"},
+        {"국가": "오스트리아", "기관": "BMF", "도메인": "bmf.gv.at"},
+        {"국가": "오스트리아", "기관": "BMAW", "도메인": "bmwet.gv.at"},
+        {"국가": "벨기에", "기관": "연방혁신기술부", "도메인": "belspo.be"},
+        {"국가": "벨기에", "기관": "BIPT", "도메인": "bipt.be"},
+        {"국가": "벨기에", "기관": "FPS Economy", "도메인": "economie.fgov.be"},
         {"국가": "대만", "기관": "moda", "도메인": "moda.gov.tw"},
+        {"국가": "대만", "기관": "MOEA", "도메인": "moea.gov.tw"},
         {"국가": "UAE", "기관": "TDRA", "도메인": "tdra.gov.ae"},
-        {"국가": "사우디", "기관": "MCIT", "도메인": "mcit.gov.sa"}
+        {"국가": "UAE", "기관": "MoIAT", "도메인": "moiat.gov.ae"},
+        {"국가": "사우디", "기관": "MCIT", "도메인": "mcit.gov.sa"},
+        {"국가": "사우디", "기관": "MIM", "도메인": "mim.gov.sa"}
     ]
 
     all_final_data = []
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
-    file_name = f'global_ict_policy_intelligence_{collected_date}.csv'
+    file_name = f'global_ict_localized_intelligence_{collected_date}.csv'
 
-    print(f"📡 개선된 쿼리로 {len(gov_agencies)}개 기관 재수집 시작...")
+    print(f"📡 {collected_date} 글로벌 50개 기관 현지어 쿼리 수집 가동...")
 
     for agency in gov_agencies:
         print(f"🔍 [{agency['국가']}] {agency['기관']} 탐색 중...")
         
-        # 💡 [개선] intitle 제약을 제거하고 검색 키워드를 확장했습니다.
-        # 이렇게 하면 제목에 AI가 없어도 본문 내용에 관련 키워드가 있으면 수집됩니다.
-        query = f'site:{agency["도메인"]} ("Artificial Intelligence" OR AI OR ICT OR "Digital Policy")'
+        # 현지어 보정 쿼리 생성
+        query = get_localized_query(agency)
         encoded_query = urllib.parse.quote(query)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
 
@@ -73,12 +116,12 @@ def main():
                 except:
                     actual_link = entry.link
 
-                # 발행일 처리
+                # 발행일 파싱
                 pub_date = "N/A"
                 if hasattr(entry, 'published_parsed') and entry.published_parsed:
                     pub_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d')
 
-                # 번역 처리
+                # 번역 (대한민국 제외)
                 try:
                     title_ko = title_en if agency['국가'] == "대한민국" else translator.translate(title_en.strip(), dest='ko').text
                 except:
@@ -95,18 +138,18 @@ def main():
                 })
                 count += 1
 
-            time.sleep(1.5) # 차단 방지를 위해 시간을 약간 더 늘렸습니다.
+            time.sleep(1.5) # 과도한 요청 방지
 
         except Exception as e:
-            print(f"❌ {agency['기관']} 오류: {e}")
+            print(f"❌ {agency['기관']} 오류 스킵: {e}")
 
-    # 💾 결과 저장
+    # CSV 저장
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["국가", "기관", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         writer.writerows(all_final_data)
         
-    print(f"\n✅ 수집 완료! {len(all_final_data)}건 저장 완료.")
+    print(f"\n✅ 수집 완료! 총 {len(all_final_data)}건의 데이터가 '{file_name}'에 저장되었습니다.")
 
 if __name__ == "__main__":
     main()
