@@ -6,41 +6,54 @@ from datetime import datetime
 from googletrans import Translator
 from googlenewsdecoder import gnewsdecoder
 
-def is_garbage(text):
-    """불필요한 노이즈(가비지)를 걸러내는 필터"""
+def is_valuable_policy(text):
+    """행정 노이즈를 걸러내고 실제 가치 있는 정책/산업 소식인지 판별"""
     t = text.upper()
-    # ❌ 수집에서 제외할 키워드 (문화, 채용, 일반 외교, 중독 등)
-    negative_keywords = [
-        "CULTURE", "CULTURAL", "ADDICTION", "RECOVERY", "NEWSLETTER", "SPEECH", 
-        "FOREIGN POLICY", "VACANCY", "RECRUITMENT", "문화", "중독", "채용", "뉴스레터",
-        "연설", "외교", "통화", "CLIMATE", "기후", "RAMADAN", "라마단", "ANNIVERSARY"
+    
+    # ❌ 1. 행정/노이즈 키워드 (이 단어들이 있으면 즉시 탈락)
+    # 대표님이 말씀하신 '입국', '웹사이트 방문', '교사 채용', '사회보험' 등을 차단
+    administrative_noise = [
+        "VISA", "FOREIGN NATIONALS", "ENTRY", "SOCIAL INSURANCE", "SIN ", 
+        "TEACHER", "VACANCY", "JOB ", "RECRUITMENT", "VISIT JAPAN", "ARRIVAL CARD",
+        "비자", "입국", "사회보험", "채용", "교사", "뉴스레터", "NEWSLETTER", "WELCOME TO",
+        "RAMADAN", "라마단", "ANNIVERSARY", "CLIMATE", "기후", "CULTURE", "문화"
     ]
-    return any(neg in t for neg in negative_keywords)
+    if any(noise in t for noise in administrative_noise):
+        return False
+
+    # ✅ 2. 반드시 포함되어야 할 산업/정책 핵심 키워드 (화이트리스트)
+    # 단순히 'Digital'만 있는 게 아니라, 아래 산업 용어가 섞여야 실질적인 소식임
+    policy_keywords = [
+        "AI", "SEMICONDUCTOR", "CHIPS", "STRATEGY", "REGULATION", "ACT", "POLICY", 
+        "6G", "5G", "QUANTUM", "CYBERSECURITY", "DATA", "PLATFORM", "UAM", "EV ",
+        "전략", "규제", "반도체", "양자", "보안", "인프라", "협력", "이니셔티브", "혁신"
+    ]
+    return any(kw in t for kw in policy_keywords)
 
 def classify_ict_refined(text):
     """13대 정밀 분류 로직"""
     t = text.upper()
     categories = {
-        "1-1. 인프라 및 네트워크": ["6G", "5G", "CLOUD", "NETWORK", "네트워크", "망", "주파수"],
-        "1-2. 지능형 플랫폼 및 데이터": ["GENERATIVE AI", "LLM", "BIG DATA", "GEN AI", "데이터", "지능형"],
-        "1-3. 산업 융합 및 미래 기술": ["ROBOT", "DIGITAL TWIN", "로봇", "양자", "QUANTUM", "드론"],
+        "1-1. 인프라 및 네트워크": ["6G", "5G", "CLOUD", "NETWORK", "네트워크", "주파수"],
+        "1-2. 지능형 플랫폼 및 데이터": ["GENERATIVE AI", "LLM", "BIG DATA", "데이터", "지능형"],
+        "1-3. 산업 융합 및 미래 기술": ["ROBOT", "DIGITAL TWIN", "로봇", "양자", "QUANTUM"],
         "2-1. IT 솔루션 및 서비스": ["SAAS", "B2B", "SOFTWARE", "소프트웨어", "솔루션"],
         "2-2. 통신 인프라 및 단말기": ["TELECOM", "SMARTPHONE", "통신", "단말", "기기"],
-        "2-3. 정책 및 거버넌스": ["REGULATION", "AI ACT", "PRIVACY", "규제", "정책", "법안", "거버넌스"],
-        "3-1. 엔터테인먼트 및 플랫폼": ["OTT", "STREAMING", "WEBTOON", "콘텐츠", "플랫폼", "MEDIA"],
+        "2-3. 정책 및 거버넌스": ["REGULATION", "AI ACT", "PRIVACY", "규제", "정책", "거버넌스"],
+        "3-1. 엔터테인먼트 및 플랫폼": ["OTT", "STREAMING", "WEBTOON", "콘텐츠", "플랫폼"],
         "3-2. 광고 및 교육": ["ADTECH", "EDTECH", "LMS", "교육", "광고"],
         "3-3. 플랫폼 및 권리": ["COPYRIGHT", "NFT", "저작권", "지식재산", "IP"],
         "4-1. 이동수단 및 항공": ["EV", "UAM", "AUTONOMOUS", "자율주행", "모빌리티"],
-        "4-2. 에너지 및 자원": ["SMART GRID", "RENEWABLE", "에너지", "그리드", "지속가능"],
-        "4-3. 제조 및 기계": ["FACTORY", "IOT", "제조", "공장", "SEMICONDUCTOR", "반도체"],
-        "4-4. 생명과학 및 소비재": ["HEALTH", "BIO", "헬스케어", "바이오", "DIGITAL HEALTH"]
+        "4-2. 에너지 및 자원": ["SMART GRID", "RENEWABLE", "에너지", "그리드"],
+        "4-3. 제조 및 기계": ["FACTORY", "IOT", "제조", "반도체", "SEMICONDUCTOR"],
+        "4-4. 생명과학 및 소비재": ["HEALTH", "BIO", "헬스케어", "바이오"]
     }
     for cat, keywords in categories.items():
         if any(kw in t for kw in keywords): return cat
     return "기타 ICT 일반"
 
 def main():
-    # 50개 주요 기관 리스트 (동일)
+    # 50개 주요 부처 리스트
     gov_agencies = [
         {"국가": "미국", "기관": "백악관", "도메인": "whitehouse.gov"}, {"국가": "미국", "기관": "DOC", "도메인": "commerce.gov"},
         {"국가": "미국", "기관": "NTIA", "도메인": "ntia.gov"}, {"국가": "중국", "기관": "CAC", "도메인": "cac.gov.cn"},
@@ -73,14 +86,12 @@ def main():
     seen_titles = set()
     translator = Translator()
     collected_date = datetime.now().strftime("%Y-%m-%d")
-    
-    # ✅ 실질적 기술어가 포함되어야만 수집 (Positive Filter)
-    must_have_tech = ["AI", "DIGITAL", "ICT", "SEMICONDUCTOR", "6G", "5G", "QUANTUM", "CYBER", "ROBOT", "UAM", "PLATFORM", "데이터", "반도체", "인공지능", "규제"]
 
-    print(f"📡 {collected_date} 가비지 제거 모드 가동 (기관당 핵심 1건)...")
+    print(f"📡 {collected_date} 행정 노이즈 완전 차단 모드 가동 (기관당 핵심 1건)...")
 
     for agency in gov_agencies:
-        query = f"site:{agency['도메인']} (AI OR Digital OR ICT OR Technology)"
+        # 검색 단계에서부터 기술 중심으로 한정
+        query = f"site:{agency['도메인']} (AI OR Semiconductor OR 'Digital Strategy' OR 'ICT Policy')"
         encoded_query = urllib.parse.quote(query)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en&gl=US"
 
@@ -88,17 +99,15 @@ def main():
             feed = feedparser.parse(rss_url)
             collected_count = 0
             for entry in feed.entries:
-                if collected_count >= 1: break # 기관당 딱 1개
+                if collected_count >= 1: break # 기관당 1개
 
                 raw_title = entry.title.split(' - ')[0].strip()
                 if raw_title in seen_titles: continue
                 if not (hasattr(entry, 'published_parsed') and entry.published_parsed[0] >= 2024): continue
                 
-                # 가비지 필터링 (부정 키워드 제거) 🚀
-                if is_garbage(raw_title): continue
-
-                # 기술 밀도 체크 (핵심 기술어 필수 포함) 🚀
-                if not any(tech in raw_title.upper() for tech in must_have_tech): continue
+                # 🚀 핵심 필터: 행정 노이즈면 버리고, 산업적 가치가 있어야만 통과
+                if not is_valuable_policy(raw_title):
+                    continue
 
                 pub_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d')
                 try:
@@ -118,17 +127,17 @@ def main():
                 seen_titles.add(raw_title)
                 collected_count += 1
             
-            print(f"✅ [{agency['국가']}] {agency['기관']} 완료")
+            print(f"✅ [{agency['국가']}] {agency['기관']} 필터링 완료")
             time.sleep(0.3)
         except: continue
 
-    file_name = f'Global_ICT_Clean_Report_{collected_date}.csv'
+    file_name = f'Global_ICT_Intelligence_Final_{collected_date}.csv'
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["국가", "기관", "ICT 분류", "발행일", "제목", "원문", "링크", "수집일"])
         writer.writeheader()
         writer.writerows(all_final_data)
         
-    print(f"\n🚀 작업 완료! 정제된 리포트가 '{file_name}'에 저장되었습니다.")
+    print(f"\n🚀 작업 완료! 정제된 핵심 리포트가 '{file_name}'에 저장되었습니다.")
 
 if __name__ == "__main__":
     main()
