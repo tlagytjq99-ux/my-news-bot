@@ -1,0 +1,41 @@
+name: China AI Policy News Scraper
+
+on:
+  schedule:
+    - cron: '30 0 * * *'  # 한국 시간 오전 9시 30분 실행 (미국 수집 직후)
+  workflow_dispatch:       # 필요할 때 언제든 수동 실행 가능
+
+jobs:
+  scrape_china:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install feedparser googlenewsdecoder
+
+      - name: Run China AI Scraper
+        # 파이썬 파일명이 china_ai_scraper.py 인지 확인하세요!
+        run: python china_ai_scraper.py
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "GitHub Action Bot"
+          git config --global user.email "actions@github.com"
+          
+          # 파일이 존재할 때만 업데이트 진행 (에러 방지 안전장치)
+          if [ -f china_ai_policy_report.csv ]; then
+            git add china_ai_policy_report.csv
+            git commit -m "Auto-update: China AI Policy News $(date +'%Y-%m-%d')" || exit 0
+            git push
+          else
+            echo "수집된 중국 데이터 파일이 없어 커밋을 건너뜁니다."
+          fi
