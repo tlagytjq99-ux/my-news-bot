@@ -2,29 +2,44 @@ name: White House 2025 Tech Policy Scraper
 
 on:
   schedule:
-    - cron: '0 2 * * *'
-  workflow_dispatch:
+    - cron: '0 2 * * *'  # 매일 밤 자동 실행
+  workflow_dispatch:      # 수동으로 'Run workflow' 버튼 클릭 시 실행
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    # 깃허브가 파일을 새로 쓸 수 있도록 권한을 부여합니다 (매우 중요)
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+
       - name: Install Dependencies
-        run: pip install feedparser googlenewsdecoder
-      - name: Run Scraper
+        run: |
+          pip install feedparser googlenewsdecoder
+
+      - name: Run Python Scraper
         run: python whitehouse_2025_scraper.py
-      - name: Commit and Push
+
+      - name: Commit and Push Changes
         run: |
           git config --global user.name "GitHub Action Bot"
           git config --global user.email "actions@github.com"
-          if [ -f whitehouse_2025_tech_report.csv ]; then
-            git add whitehouse_2025_tech_report.csv
-            git commit -m "Auto-update: 2025 Tech Report with Categories" || exit 0
+          
+          # 파일이 생성되었는지 확인 후 저장소에 반영
+          if [ -f whitehouse_eo_2025_final.csv ]; then
+            git add whitehouse_eo_2025_final.csv
+            git commit -m "Auto-update: 2025 White House Tech Report $(date +'%Y-%m-%d')"
             git push
+          else
+            echo "파일이 생성되지 않았습니다. 파이썬 코드를 확인해주세요."
+            exit 1
           fi
