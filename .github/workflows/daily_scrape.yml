@@ -1,4 +1,4 @@
-name: White House News Decoder Scraper
+name: White House Direct Scraper
 
 on:
   schedule:
@@ -6,29 +6,23 @@ on:
   workflow_dispatch:
 
 jobs:
-  scrape_and_commit:
+  scrape:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
+      - uses: actions/checkout@v3
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-
       - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt  # 👈 requirements.txt를 통해 확실하게 설치
-
+          pip install -r requirements.txt
       - name: Run Scraper
         run: python whitehouse_scraper.py
-
-      - name: Commit and Push Changes
+      - name: Commit and Push
         run: |
-          git config --global user.name "GitHub Action Bot"
+          git config --global user.name "GitHub Action"
           git config --global user.email "actions@github.com"
           git add whitehouse_news_decoded.csv
-          git commit -m "Auto-update: Decoded White House news $(date +'%Y-%m-%d')" || exit 0
+          git commit -m "Auto-update White House News" || exit 0
           git push
