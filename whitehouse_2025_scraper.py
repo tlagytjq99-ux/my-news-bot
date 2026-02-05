@@ -6,14 +6,15 @@ from googlenewsdecoder import gnewsdecoder
 import time
 
 def main():
-    # 1. 타겟 경로: 백악관 행정명령 섹션 (2025년 이후)
+    # 1. 타겟 경로 고정 (행정명령 섹션만 100% 타겟팅)
+    # 다른 경로로 확장하지 않고 오직 이 경로 내 인덱싱된 데이터만 가져옵니다.
     target_path = 'whitehouse.gov/presidential-actions/executive-orders/'
     query = f'site:{target_path} after:2025-01-01'
     encoded_query = urllib.parse.quote(query)
     rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
 
-    # 2. 사진 속 46개 카테고리 및 키워드 데이터베이스화
-    category_map = {
+    # 2. 사진 속 46개 카테고리 및 세부 키워드 (전수 이식)
+    category_db = {
         "1. 5G/6G Network": ["5G", "6G", "Open RAN", "Terahertz", "Network slicing"],
         "2. Cloud Computing": ["Cloud 3.0", "Multi-cloud", "Sovereign cloud", "Serverless", "Cloud native"],
         "3. IoT": ["Industrial IoT", "Matter protocol", "Edge AI", "Digital twin", "IoT security"],
@@ -62,58 +63,61 @@ def main():
         "46. Education": ["STEM education", "Adaptive learning", "Skill-based learning"]
     }
 
-    print(f"📡 백악관 행정명령 정밀 분석 시작 (2025년 대상)...")
+    print(f"📡 백악관 행정명령(Executive Orders) 섹션만 정밀 스캔 중...")
 
     try:
+        # 구글 우회 RSS 파싱
         feed = feedparser.parse(rss_url)
-        # 데이터 부족 시 검색 범위 확장
-        if len(feed.entries) < 3:
-            print("💡 특정 섹션 데이터 부족으로 Presidential Actions 전체로 확장합니다.")
-            query = 'site:whitehouse.gov/presidential-actions after:2025-01-01'
-            rss_url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=en-US&gl=US&ceid=US:en"
-            feed = feedparser.parse(rss_url)
-
         results = []
+
         for entry in feed.entries:
             try:
+                # 제목에서 기사 본문만 추출
+                title = entry.title.split(' - ')[0].strip()
+                
+                # 구글 우회 디코딩 (암호화된 링크 -> 실제 주소)
+                try:
+                    decoded = gnewsdecoder(entry.link)
+                    actual_url = decoded.get('decoded_url', entry.link)
+                except:
+                    actual_url = entry.link
+
+                # *** 경로 검증: 수집된 링크가 실제 executive-orders 경로인지 한 번 더 확인 ***
+                if "/executive-orders/" not in actual_url:
+                    continue
+
+                # 날짜 및 2025년 필터
                 pub_date = datetime(*entry.published_parsed[:3])
-                if pub_date.year >= 2025:
-                    title = entry.title.split(' - ')[0].strip()
-                    
-                    # 카테고리 매칭 로직
-                    matched_cats = []
-                    for cat, kws in category_map.items():
-                        if any(kw.lower() in title.lower() for kw in kws):
-                            matched_cats.append(cat)
-                    
-                    # 링크 디코딩
-                    try:
-                        decoded = gnewsdecoder(entry.link)
-                        actual_url = decoded.get('decoded_url', entry.link)
-                    except:
-                        actual_url = entry.link
+                if pub_date.year < 2025:
+                    continue
 
-                    # 데이터 저장 (카테고리가 없어도 수집하도록 수정)
-                    results.append({
-                        "발행일": pub_date.strftime('%Y-%m-%d'),
-                        "유형(Category)": ", ".join(matched_cats) if matched_cats else "기타 정책(General)",
-                        "제목": title,
-                        "원문링크": actual_url
-                    })
+                # 카테고리 매칭 (46개 DB 대조)
+                matched_cats = []
+                for cat, kws in category_db.items():
+                    if any(kw.lower() in title.lower() for kw in kws):
+                        matched_cats.append(cat)
+
+                results.append({
+                    "발행일": pub_date.strftime('%Y-%m-%d'),
+                    "유형(Category)": ", ".join(matched_cats) if matched_cats else "Unclassified EO",
+                    "제목": title,
+                    "원문링크": actual_url
+                })
                 time.sleep(0.05)
-            except: continue
+            except:
+                continue
 
-        # CSV 저장
-        file_name = 'whitehouse_eo_2025_final.csv'
+        # 3. CSV 저장
+        file_name = 'whitehouse_eo_2025_only.csv'
         with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.DictWriter(f, fieldnames=["발행일", "유형(Category)", "제목", "원문링크"])
             writer.writeheader()
             if results:
                 results.sort(key=lambda x: x['발행일'], reverse=True)
                 writer.writerows(results)
-                print(f"✅ 성공: 총 {len(results)}건의 데이터를 분류 저장했습니다.")
+                print(f"✅ 완료: 총 {len(results)}건의 행정명령 데이터를 확보했습니다.")
             else:
-                print("⚠️ 2025년 데이터를 찾지 못했습니다.")
+                print("⚠️ 2025년 행정명령(EO) 전용 데이터가 아직 인덱싱되지 않았습니다.")
 
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
