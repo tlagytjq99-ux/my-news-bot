@@ -6,20 +6,19 @@ from googlenewsdecoder import gnewsdecoder
 import time
 
 def main():
-    # 1. 설정: 3개월(90일) 및 정식 키워드
+    # 1. 설정: 최근 90일 & 정식 키워드
     days_limit = 90
-    # "Artificial Intelligence" 문구가 정확히 일치하는 결과만 찾도록 설정
-    keyword = '"artificial intelligence"' 
+    keyword = '"artificial intelligence"'
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days_limit)
     
-    # 2. 구글 뉴스 RSS 쿼리 생성
-    # site 연산자와 키워드를 조합하여 백악관 내 정식 명칭 언급 문서 타겟팅
-    query = f'{keyword} site:whitehouse.gov'
+    # 2. 쿼리 최적화: 사이트 경로를 /briefing-room 으로 한정
+    # 이렇게 하면 팩트시트나 보고서가 아닌 '보도자료' 위주로 수집됩니다.
+    query = f'{keyword} site:whitehouse.gov/briefing-room'
     encoded_query = urllib.parse.quote(query)
     rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
 
-    print(f"📡 백악관 {keyword} 관련 정책 수집 및 링크 해독 중... (최근 {days_limit}일)")
+    print(f"📡 백악관 '뉴스룸' 내 {keyword} 소식 정밀 수집 중...")
 
     try:
         feed = feedparser.parse(rss_url)
@@ -32,11 +31,10 @@ def main():
             except:
                 continue
 
-            # 기간 필터링
             if pub_date_obj >= start_date:
                 raw_title = entry.title.split(' - ')[0].strip()
                 
-                # 3. 구글 뉴스 링크 해독 (백악관 공식 URL로 변환)
+                # 3. 구글 뉴스 링크 해독
                 try:
                     decoded = gnewsdecoder(entry.link)
                     actual_link = decoded.get('decoded_url', entry.link)
@@ -50,17 +48,17 @@ def main():
                 })
                 time.sleep(0.1)
 
-        # 4. CSV 파일 저장
-        file_name = 'whitehouse_ai_report.csv'
+        # 4. CSV 저장
+        file_name = 'whitehouse_briefing_only.csv'
         with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.DictWriter(f, fieldnames=["발행일", "제목", "원문링크"])
             writer.writeheader()
             if all_data:
                 all_data.sort(key=lambda x: x['발행일'], reverse=True)
                 writer.writerows(all_data)
-                print(f"✅ 수집 성공: 총 {len(all_data)}건의 전문 정책 자료를 확보했습니다.")
+                print(f"✅ 필터링 완료: 뉴스룸 데이터 총 {len(all_data)}건 확보.")
             else:
-                print(f"⚠️ 결과 없음: 최근 {days_limit}일 내에 해당 키워드의 자료가 인덱싱되지 않았습니다.")
+                print("⚠️ 뉴스룸 내에는 해당 기간의 AI 소식이 없습니다.")
 
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
