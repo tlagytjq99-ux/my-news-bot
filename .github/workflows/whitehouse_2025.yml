@@ -1,0 +1,37 @@
+name: White House 2025 Tech Policy Scraper
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 매일 오후 11시(KST) 자동 실행
+  workflow_dispatch:      # 수동 실행 가능
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: |
+          pip install feedparser googlenewsdecoder
+
+      - name: Run 2025 Tech Scraper
+        run: python whitehouse_2025_scraper.py
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "GitHub Action Bot"
+          git config --global user.email "actions@github.com"
+          if [ -f whitehouse_2025_tech_report.csv ]; then
+            git add whitehouse_2025_tech_report.csv
+            git commit -m "Auto-update: 2025 Tech Policy Report $(date +'%Y-%m-%d')" || exit 0
+            git push
+          else
+            echo "No data found for the keywords in 2025."
+          fi
