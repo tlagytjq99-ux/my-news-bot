@@ -18,7 +18,7 @@ def main():
 
     # site 연산자에 경로를 포함시켜 해당 섹션의 인덱싱을 우선적으로 가져옵니다.
 
-    query = 'site:whitehouse.gov/presidential-actions/executive-orders after:2025-01-01'
+    query = 'site:whitehouse.gov/presidential-actions/executive-orders/ after:2025-01-01'
 
     encoded_query = urllib.parse.quote(query)
 
