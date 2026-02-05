@@ -1,9 +1,9 @@
-name: White House News Daily Scraper
+name: White House News Decoder Scraper
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 매일 UTC 0시 (한국 시간 오전 9시) 자동 실행
-  workflow_dispatch:      # 필요할 때 수동으로 버튼 눌러 실행 가능
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
   scrape_and_commit:
@@ -19,7 +19,8 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install feedparser
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt  # 👈 requirements.txt를 통해 확실하게 설치
 
       - name: Run Scraper
         run: python whitehouse_scraper.py
@@ -28,6 +29,6 @@ jobs:
         run: |
           git config --global user.name "GitHub Action Bot"
           git config --global user.email "actions@github.com"
-          git add whitehouse_news_weekly.csv
-          git commit -m "Auto-update: White House news $(date +'%Y-%m-%d')" || exit 0
+          git add whitehouse_news_decoded.csv
+          git commit -m "Auto-update: Decoded White House news $(date +'%Y-%m-%d')" || exit 0
           git push
