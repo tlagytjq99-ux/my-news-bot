@@ -6,18 +6,14 @@ from googlenewsdecoder import gnewsdecoder
 import time
 
 def main():
-    # 1. 아카이브 페이지를 거르기 위한 키워드 조합 쿼리
-    # 'Executive Order on'을 넣어 공식 문서 제목 형식을 강제하고, 
-    # 대표님이 주신 기술 키워드들을 결합합니다.
-    tech_keywords = "(AI OR Semiconductor OR Energy OR Quantum OR Infrastructure OR Defense OR Efficiency)"
-    target_path = "whitehouse.gov/presidential-actions/executive-orders/"
-    
-    # "Executive Order on"이 제목에 포함된 것만 찾아서 아카이브 페이지 유입 차단
-    query = f'site:{target_path} "Executive Order on" {tech_keywords} after:2025-01-01'
+    # 1. 2025년 데이터만 정밀 타겟팅하는 쿼리
+    target_site = "whitehouse.gov/presidential-actions/"
+    # 2025-01-01 이후 데이터만 가져오도록 구글에 명령
+    query = f"site:{target_site} after:2025-01-01"
     encoded_query = urllib.parse.quote(query)
     rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
 
-    # 2. 사진 속 46개 카테고리 분류 DB
+    # 2. 사진 속 46개 카테고리 (핵심 키워드 매핑)
     category_db = {
         "1. 5G/6G Network": ["5G", "6G", "Open RAN", "Terahertz", "Network slicing"],
         "2. Cloud Computing": ["Cloud 3.0", "Multi-cloud", "Sovereign cloud", "Serverless", "Cloud native"],
@@ -67,7 +63,7 @@ def main():
         "46. Education": ["STEM education", "Adaptive learning", "Skill-based learning"]
     }
 
-    print(f"📡 백악관 개별 행정명령 정밀 스캔 시작 (노이즈 제거 모드)...")
+    print(f"📅 2025년 백악관 정책 데이터 정밀 수집 시작...")
 
     try:
         feed = feedparser.parse(rss_url)
@@ -75,45 +71,53 @@ def main():
 
         for entry in feed.entries:
             try:
+                # 발행일 파싱 및 2025년 검증
+                pub_date = datetime(*entry.published_parsed[:3])
+                if pub_date.year < 2025:
+                    continue # 2025년 이전 데이터는 과감히 삭제
+
                 title = entry.title.split(' - ')[0].strip()
                 
-                # 'Archives'나 'Page'가 들어간 목록 페이지는 가차없이 버립니다.
-                if any(word in title for word in ["Archives", "Page", "Presidential Actions"]):
+                # 아카이브/목차 페이지 제거 (진짜 문서만 수집)
+                if any(noise in title for noise in ["Archives", "Page", "Presidential Actions"]):
                     continue
 
-                # 구글 우회 디코딩
+                # 구글 링크 우회 디코딩
                 try:
                     decoded = gnewsdecoder(entry.link)
                     actual_url = decoded.get('decoded_url', entry.link)
                 except:
                     actual_url = entry.link
 
-                # 카테고리 매칭
+                # 카테고리 매칭 (46개 필터링)
                 matched_cats = []
                 for cat, kws in category_db.items():
                     if any(kw.lower() in title.lower() for kw in kws):
                         matched_cats.append(cat)
 
                 results.append({
-                    "발행일": datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d'),
-                    "유형(Category)": ", ".join(matched_cats) if matched_cats else "Executive Order",
+                    "발행일": pub_date.strftime('%Y-%m-%d'),
+                    "카테고리": ", ".join(matched_cats) if matched_cats else "일반 정책",
+                    "문서유형": "Executive Order" if "/executive-orders/" in actual_url else "Presidential Action",
                     "제목": title,
                     "원문링크": actual_url
                 })
-                time.sleep(0.1)
+                time.sleep(0.05)
             except: continue
 
         # 3. CSV 저장
-        file_name = 'whitehouse_eo_2025_only.csv'
+        file_name = 'whitehouse_2025_report.csv'
         with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
-            writer = csv.DictWriter(f, fieldnames=["발행일", "유형(Category)", "제목", "원문링크"])
+            writer = csv.DictWriter(f, fieldnames=["발행일", "카테고리", "문서유형", "제목", "원문링크"])
             writer.writeheader()
+            
             if results:
+                # 최신 날짜순 정렬
                 results.sort(key=lambda x: x['발행일'], reverse=True)
                 writer.writerows(results)
-                print(f"✅ 성공: {len(results)}건의 '진짜' 행정명령 문서를 찾았습니다.")
+                print(f"✅ 성공: 총 {len(results)}건의 2025년 데이터를 수집 완료했습니다.")
             else:
-                print("⚠️ 개별 문서 인덱싱을 찾지 못했습니다. 쿼리를 더 단순화해 보겠습니다.")
+                print("⚠️ 2025년 조건에 맞는 데이터가 검색 결과에 없습니다.")
 
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
