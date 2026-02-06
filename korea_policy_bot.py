@@ -1,80 +1,68 @@
 import requests
 import xml.etree.ElementTree as ET
 import csv
-import time
+import os
 from datetime import datetime, timedelta
 
 def main():
-    # 1. 대표님이 주신 키를 제가 직접 넣었습니다. 
-    # 특수문자 처리를 위해 unquote 없이 원본 그대로 사용합니다.
-    SERVICE_KEY = "R+veVpMchPZJob94a/x0z5KlwTOuB+OOlK2GhFGigbo7p/fupVm7zAY14QNDhXHg8mSIEyBJOF1x/1VIvJAwSQ=="
+    # 시크릿에서 키 가져오기
+    SERVICE_KEY = os.getenv("MY_SERVICE_KEY")
     
-    results = []
-    curr = datetime(2025, 1, 1)
-    end = datetime(2025, 12, 31)
+    # 테스트 구간: 최근 10일치만 수집해보기
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=10)
     
-    print("🇰🇷 대한민국 정책브리핑 2025 수집 시작 (인증 우회 방식)...")
+    s_str = start_date.strftime("%Y%m%d")
+    e_str = end_date.strftime("%Y%m%d")
+    
+    print(f"🇰🇷 최근 데이터 수집 테스트 시작 ({s_str} ~ {e_str})...")
 
-    while curr <= end:
-        batch_end = curr + timedelta(days=2)
-        if batch_end > end: batch_end = end
-        
-        s_str = curr.strftime("%Y%m%d")
-        e_str = batch_end.strftime("%Y%m%d")
-        
-        # 2. [필살기] URL에 키와 날짜를 수동으로 조합합니다. 
-        # requests가 키를 인코딩하지 못하도록 문자열을 통째로 만듭니다.
-        target_url = (
-            f"http://apis.data.go.kr/1371000/pressReleaseService/pressReleaseList"
-            f"?serviceKey={SERVICE_KEY}"
-            f"&startDate={s_str}"
-            f"&endDate={e_str}"
-            f"&pageNo=1"
-            f"&numOfRows=500"
-        )
-        
-        print(f"📡 구간: {s_str} ~ {e_str}", end=" ", flush=True)
+    # URL 직접 구성 (인증 에러 방지용)
+    target_url = (
+        f"http://apis.data.go.kr/1371000/pressReleaseService/pressReleaseList"
+        f"?serviceKey={SERVICE_KEY}"
+        f"&startDate={s_str}"
+        f"&endDate={e_str}"
+        f"&pageNo=1"
+        f"&numOfRows=100"
+    )
 
-        try:
-            # params 인자를 쓰지 않고 완성된 URL만 넣어서 호출합니다.
-            resp = requests.get(target_url, timeout=30)
+    try:
+        resp = requests.get(target_url, timeout=30)
+        print(f"📡 API 응답 상태: {resp.status_code}")
+        
+        if resp.status_code == 200:
+            # 응답 본문이 비어있는지 확인
+            if "NewsItem" not in resp.text:
+                print("⚠️ 데이터는 성공적으로 받았으나, 해당 기간에 보도자료가 없습니다.")
+                return
+
+            root = ET.fromstring(resp.content)
+            items = root.findall('.//NewsItem')
             
-            # 응답 본문에 에러 메시지가 있는지 확인
-            if "SERVICE_KEY_IS_NOT_REGISTERED_ERROR" in resp.text:
-                print("❌ 에러: 공공데이터 포털에 키가 아직 등록 안 됨 (1시간 대기 필요)")
-                break
+            results = []
+            for item in items:
+                results.append({
+                    "발행일": item.findtext('ApproveDate'),
+                    "부처": item.findtext('MinisterCode'),
+                    "제목": item.findtext('Title'),
+                    "링크": item.findtext('OriginalUrl')
+                })
             
-            if resp.status_code == 200:
-                root = ET.fromstring(resp.content)
-                items = root.findall('.//NewsItem')
-                for item in items:
-                    results.append({
-                        "발행일": item.findtext('ApproveDate'),
-                        "부처": item.findtext('MinisterCode'),
-                        "제목": item.findtext('Title'),
-                        "링크": item.findtext('OriginalUrl')
-                    })
-                print(f"✅ ({len(items)}건)")
-            elif resp.status_code == 401:
-                print("❌ 여전히 401 에러... (키 활성화 대기 필요)")
-                break
+            if results:
+                file_name = 'Korea_Policy_2025.csv'
+                with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
+                    writer = csv.DictWriter(f, fieldnames=["발행일", "부처", "제목", "링크"])
+                    writer.writeheader()
+                    writer.writerows(results)
+                print(f"✅ 수집 성공! {len(results)}건의 파일을 생성했습니다.")
             else:
-                print(f"❌ 응답 실패 ({resp.status_code})")
-                break
-                
-        except Exception as e:
-            print(f"❌ 오류: {e}")
-            break
-        
-        curr += timedelta(days=3)
-        time.sleep(0.5)
+                print("❌ 수집된 아이템이 없습니다.")
+        else:
+            print(f"❌ API 호출 실패 (상태코드: {resp.status_code})")
 
-    if results:
-        with open('Korea_Policy_2025.csv', 'w', newline='', encoding='utf-8-sig') as f:
-            writer = csv.DictWriter(f, fieldnames=["발행일", "부처", "제목", "링크"])
-            writer.writeheader()
-            writer.writerows(results)
-        print(f"\n🏁 완료! 총 {len(results)}건 저장.")
+    except Exception as e:
+        print(f"❌ 에러 발생: {e}")
 
 if __name__ == "__main__":
     main()
