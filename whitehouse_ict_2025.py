@@ -1,23 +1,9 @@
 import requests
-from bs4 import BeautifulSoup
 import csv
 import time
 
-def get_fr_content(url):
-    """Federal Register 행정명령 본문 전체 텍스트를 가져옵니다."""
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url, headers=headers, timeout=15)
-        if res.status_code == 200:
-            soup = BeautifulSoup(res.text, 'html.parser')
-            content = soup.find('div', class_='document-content')
-            return content.get_text(strip=True).lower() if content else ""
-    except:
-        return ""
-    return ""
-
 def main():
-    # 대표님이 주신 46개 카테고리/키워드 완벽 반영
+    # 1. 46개 카테고리 데이터베이스 (축약형, 실제 실행시 위 리스트 사용)
     ICT_DATABASE = {
         "1. 5G/6G Network": ["5G", "6G", "Open RAN", "Terahertz", "Network slicing"],
         "2. Cloud Computing": ["Cloud 3.0", "Multi-cloud", "Sovereign cloud", "Serverless", "Cloud native"],
@@ -65,52 +51,66 @@ def main():
         "44. Pharmacy": ["Drug discovery", "Biopharmaceutical", "Clinical trial"],
         "45. Food": ["FoodTech", "Alternative protein", "Vertical farming"],
         "46. Education": ["STEM education", "Adaptive learning", "Skill-based learning"]
+        # ... (대표님이 주신 46개 카테고리 전체를 여기에 넣으시면 됩니다)
     }
 
-    # Federal Register 트럼프 2025 타겟
-    base_url = "https://www.federalregister.gov/presidential-documents/executive-orders/donald-trump/2025"
-    print(f"📡 46개 카테고리 정밀 딥 스캔 시작...")
+    # 2. Federal Register API 호출 설정
+    # 대통령: 도널드 트럼프, 문서종류: 행정명령, 연도: 2025
+    api_url = "https://www.federalregister.gov/api/v1/documents.json"
+    params = {
+        "conditions[presidential_document_type]": "executive_order",
+        "conditions[president]": "donald-trump",
+        "conditions[publication_date][year]": "2025",
+        "per_page": 1000,
+        "fields[]": ["title", "abstract", "body_html_url", "html_url", "publication_date", "raw_text_url"]
+    }
 
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(base_url, headers=headers)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        documents = soup.find_all('div', class_='document-wrapper')
-        results = []
+    print(f"📡 API로 2025년 트럼프 행정명령 수집 중...")
+    response = requests.get(api_url, params=params)
+    
+    if response.status_code != 200:
+        print(f"❌ API 호출 실패: {response.status_code}")
+        return
 
-        for doc in documents:
-            title_tag = doc.find('h2').find('a')
-            title = title_tag.get_text(strip=True)
-            doc_url = title_tag['href']
-            full_text = get_fr_content(doc_url)
-            
-            matched_cats = []
-            found_kws = []
-            for cat, kws in ICT_DATABASE.items():
-                for kw in kws:
-                    if kw.lower() in title.lower() or kw.lower() in full_text:
-                        if cat not in matched_cats: matched_cats.append(cat)
-                        found_kws.append(kw)
+    data = response.json()
+    results = []
 
-            if matched_cats:
-                results.append({
-                    "발행일": doc.find('p', class_='metadata').get_text(strip=True) if doc.find('p', class_='metadata') else "2025",
-                    "Category": ", ".join(matched_cats),
-                    "Keywords": ", ".join(list(set(found_kws))),
-                    "Title": title,
-                    "Link": doc_url
-                })
-                print(f"✅ Found: {title[:40]}")
-                time.sleep(1)
+    for doc in data.get('results', []):
+        title = doc.get('title', '')
+        # raw_text_url을 통해 본문 텍스트를 바로 가져올 수 있습니다 (크롤링 불필요)
+        raw_text_url = doc.get('raw_text_url', '')
+        full_text = ""
+        
+        if raw_text_url:
+            text_res = requests.get(raw_text_url)
+            full_text = text_res.text.lower() if text_res.status_code == 200 else ""
 
-        with open('trump_ict_report_2025.csv', 'w', newline='', encoding='utf-8-sig') as f:
-            writer = csv.DictWriter(f, fieldnames=["발행일", "Category", "Keywords", "Title", "Link"])
-            writer.writeheader()
-            writer.writerows(results)
-        print(f"🏁 완료! {len(results)}건 수집됨.")
+        # 카테고리 매칭 로직
+        matched_cats = []
+        found_kws = []
+        for cat, kws in ICT_DATABASE.items():
+            for kw in kws:
+                if kw.lower() in title.lower() or kw.lower() in full_text:
+                    if cat not in matched_cats: matched_cats.append(cat)
+                    found_kws.append(kw)
 
-    except Exception as e:
-        print(f"❌ 오류: {e}")
+        if matched_cats:
+            results.append({
+                "발행일": doc.get('publication_date'),
+                "Category": ", ".join(matched_cats),
+                "Keywords": ", ".join(list(set(found_kws))),
+                "Title": title,
+                "Link": doc.get('html_url')
+            })
+            print(f"✅ 매칭: {title[:40]}...")
+
+    # 3. CSV 저장
+    with open('trump_2025_api_report.csv', 'w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.DictWriter(f, fieldnames=["발행일", "Category", "Keywords", "Title", "Link"])
+        writer.writeheader()
+        writer.writerows(results)
+
+    print(f"🏁 완료! 총 {len(results)}건의 정책이 분석되었습니다.")
 
 if __name__ == "__main__":
     main()
