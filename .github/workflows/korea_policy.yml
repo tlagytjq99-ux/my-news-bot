@@ -22,9 +22,8 @@ jobs:
       - name: Run Korea Policy Bot
         run: python korea_policy_bot.py
         env:
-          # 공공데이터포털에서 받은 키를 여기에 직접 넣거나 
-          # 깃허브 Secrets에 넣었다면 ${{ secrets.KOREA_SERVICE_KEY }}로 변경
-          MY_SERVICE_KEY: "대표님의_디코딩_키를_여기에_넣으세요"
+          # 시크릿에서 키를 안전하게 가져와서 파이썬에 전달합니다.
+          MY_SERVICE_KEY: ${{ secrets.KOREA_SERVICE_KEY }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
