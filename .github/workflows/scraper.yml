@@ -1,0 +1,40 @@
+name: Federal Register 2025 ICT Scraper
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 매일 자정에 자동 실행
+  workflow_dispatch:      # 버튼 눌러서 수동 실행 가능
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write    # 파일 저장을 위해 쓰기 권한 필수
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Run Python Scraper
+        run: python whitehouse_ict_2025.py  # 파이썬 파일명과 일치해야 함
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "GitHub Action Bot"
+          git config --global user.email "actions@github.com"
+          git add .
+          if git diff --staged --quiet; then
+            echo "변경사항 없음"
+          else
+            git commit -m "Auto-update: 2025 Federal Register ICT Report"
+            git push
+          fi
