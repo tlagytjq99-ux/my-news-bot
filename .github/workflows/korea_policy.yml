@@ -1,0 +1,33 @@
+name: Korea Policy Data Collect 2025
+
+on:
+  workflow_dispatch: # 수동 실행 버튼 생성
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Run Korea Policy Bot
+        run: python korea_policy_bot.py
+        env:
+          # 공공데이터포털에서 받은 키를 여기에 직접 넣거나 
+          # 깃허브 Secrets에 넣었다면 ${{ secrets.KOREA_SERVICE_KEY }}로 변경
+          MY_SERVICE_KEY: "대표님의_디코딩_키를_여기에_넣으세요"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Korea-Policy-2025-Data
+          path: Korea_Policy_2025.csv
