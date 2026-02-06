@@ -3,7 +3,9 @@ import csv
 import time
 
 def main():
-    # 1. 46개 카테고리 데이터 (기존과 동일)
+    # 
+    
+    # 1. 46개 카테고리 데이터 (기존 동일)
     ICT_DATABASE = {
         "1. 5G/6G Network": ["5G", "6G", "Open RAN", "Terahertz", "Network slicing"],
         "2. Cloud Computing": ["Cloud 3.0", "Multi-cloud", "Sovereign cloud", "Serverless", "Cloud native"],
@@ -51,72 +53,76 @@ def main():
         "44. Pharmacy": ["Drug discovery", "Biopharmaceutical", "Clinical trial"],
         "45. Food": ["FoodTech", "Alternative protein", "Vertical farming"],
         "46. Education": ["STEM education", "Adaptive learning", "Skill-based learning"]
-        # ... (나머지 46개 카테고리는 대표님 리스트 그대로 사용하시면 됩니다)
+        # ... (나머지 카테고리 포함)
     }
-
-    # 2. API 설정 최적화 (effective_date 제거, publication_date 유지)
-    api_url = "https://www.federalregister.gov/api/v1/documents.json"
-    params = {
-        "conditions[publication_date][year]": "2025",
-        "conditions[presidential_document_type][]": ["executive_order", "determination", "memorandum", "proclamation"], # 문서 종류 확대
-        "conditions[president]": "donald-trump", # 트럼프 대통령 명시
-        "order": "newest",
-        "per_page": 100,
-        "fields[]": ["title", "publication_date", "html_url", "raw_text_url", "type", "agency_names"]
-    }
-
-    print("📡 2025 트럼프 정부 정책 데이터 수집 중 (필터 최적화 버전)...")
-    
-    try:
-        response = requests.get(api_url, params=params, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-        docs = data.get('results', [])
-        print(f"🔎 총 {len(docs)}건의 정책 문서 발견!")
-    except Exception as e:
-        print(f"❌ API 호출 에러: {e}")
-        return
 
     results = []
-    for doc in docs:
-        title = doc.get('title', '')
-        raw_url = doc.get('raw_text_url')
-        full_text = ""
+    page = 1
+    
+    print("🚀 2025년 전체 데이터 정밀 스캔 시작 (모든 페이지 수집)...")
+
+    while True:
+        api_url = "https://www.federalregister.gov/api/v1/documents.json"
+        params = {
+            "conditions[publication_date][year]": "2025",
+            "conditions[presidential_document_type][]": ["executive_order", "determination", "memorandum", "proclamation"],
+            "conditions[president]": "donald-trump",
+            "order": "newest",
+            "per_page": 100,
+            "page": page,  # 페이지 번호 추가
+            "fields[]": ["title", "publication_date", "html_url", "raw_text_url", "type"]
+        }
+
+        response = requests.get(api_url, params=params)
+        if response.status_code != 200: break
         
-        # 본문 텍스트 분석 (API 장점 활용)
-        if raw_url:
-            try:
-                full_text = requests.get(raw_url).text.lower()
-            except: pass
+        data = response.json()
+        docs = data.get('results', [])
+        
+        if not docs: break # 더 이상 가져올 데이터가 없으면 중단
 
-        # 46개 카테고리 매칭 로직 (제목 + 본문)
-        matched_cats = []
-        found_kws = []
-        for cat, kws in ICT_DATABASE.items():
-            for kw in kws:
-                if kw.lower() in title.lower() or kw.lower() in full_text:
-                    if cat not in matched_cats: matched_cats.append(cat)
-                    found_kws.append(kw)
+        print(f"📄 {page}페이지 분석 중... ({len(docs)}건)")
 
-        results.append({
-            "Date": doc.get('publication_date'),
-            "Type": doc.get('type'),
-            "ICT_Category": ", ".join(matched_cats) if matched_cats else "General/Other",
-            "Matched_Keywords": ", ".join(list(set(found_kws))),
-            "Policy_Title": title,
-            "Link": doc.get('html_url')
-        })
-        print(f"✅ 분석 완료: {title[:40]}...")
+        for doc in docs:
+            title = doc.get('title', '')
+            raw_url = doc.get('raw_text_url')
+            full_text = ""
+            
+            # 본문 텍스트 딥 스캔
+            if raw_url:
+                try:
+                    full_text = requests.get(raw_url).text.lower()
+                except: pass
+
+            matched_cats = []
+            found_kws = []
+            for cat, kws in ICT_DATABASE.items():
+                for kw in kws:
+                    if kw.lower() in title.lower() or kw.lower() in full_text:
+                        if cat not in matched_cats: matched_cats.append(cat)
+                        found_kws.append(kw)
+
+            results.append({
+                "Date": doc.get('publication_date'),
+                "Type": doc.get('type'),
+                "ICT_Category": ", ".join(matched_cats) if matched_cats else "General",
+                "Keywords": ", ".join(list(set(found_kws))),
+                "Title": title,
+                "Link": doc.get('html_url')
+            })
+        
+        page += 1
+        time.sleep(0.5) # 서버 부하 방지
 
     # 3. CSV 저장
     if results:
-        with open('Trump_ICT_Policy_Inventory_2025.csv', 'w', newline='', encoding='utf-8-sig') as f:
-            writer = csv.DictWriter(f, fieldnames=["Date", "Type", "ICT_Category", "Matched_Keywords", "Policy_Title", "Link"])
+        with open('Trump_ICT_Full_Report_2025.csv', 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.DictWriter(f, fieldnames=["Date", "Type", "ICT_Category", "Keywords", "Title", "Link"])
             writer.writeheader()
             writer.writerows(results)
-        print(f"🏁 파일 저장 완료: Trump_ICT_Policy_Inventory_2025.csv (총 {len(results)}건)")
+        print(f"🏁 수집 완료! 총 {len(results)}건의 데이터를 저장했습니다.")
     else:
-        print("⚠️ 매칭된 결과가 없습니다. 키워드나 필터를 확인해 주세요.")
+        print("⚠️ 수집된 데이터가 없습니다.")
 
 if __name__ == "__main__":
     main()
