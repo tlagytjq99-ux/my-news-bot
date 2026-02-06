@@ -1,10 +1,9 @@
 import requests
 import csv
 import time
+from deep_translator import GoogleTranslator  # 번역 라이브러리 추가
 
 def main():
-    # 
-    
     # 1. 46개 카테고리 데이터 (기존 동일)
     ICT_DATABASE = {
         "1. 5G/6G Network": ["5G", "6G", "Open RAN", "Terahertz", "Network slicing"],
@@ -53,13 +52,14 @@ def main():
         "44. Pharmacy": ["Drug discovery", "Biopharmaceutical", "Clinical trial"],
         "45. Food": ["FoodTech", "Alternative protein", "Vertical farming"],
         "46. Education": ["STEM education", "Adaptive learning", "Skill-based learning"]
-        # ... (나머지 카테고리 포함)
+        # ... (대표님의 46개 카테고리 전체를 여기에 유지하세요)
     }
 
     results = []
     page = 1
+    translator = GoogleTranslator(source='en', target='ko') # 번역기 설정
     
-    print("🚀 2025년 전체 데이터 정밀 스캔 시작 (모든 페이지 수집)...")
+    print("🚀 2025년 정책 수집 및 한글 번역 분석 시작...")
 
     while True:
         api_url = "https://www.federalregister.gov/api/v1/documents.json"
@@ -69,7 +69,7 @@ def main():
             "conditions[president]": "donald-trump",
             "order": "newest",
             "per_page": 100,
-            "page": page,  # 페이지 번호 추가
+            "page": page,
             "fields[]": ["title", "publication_date", "html_url", "raw_text_url", "type"]
         }
 
@@ -78,51 +78,58 @@ def main():
         
         data = response.json()
         docs = data.get('results', [])
-        
-        if not docs: break # 더 이상 가져올 데이터가 없으면 중단
-
-        print(f"📄 {page}페이지 분석 중... ({len(docs)}건)")
+        if not docs: break
 
         for doc in docs:
-            title = doc.get('title', '')
+            title_en = doc.get('title', '')
             raw_url = doc.get('raw_text_url')
             full_text = ""
             
-            # 본문 텍스트 딥 스캔
+            # 본문 텍스트 분석
             if raw_url:
                 try:
                     full_text = requests.get(raw_url).text.lower()
                 except: pass
 
+            # 매칭 로직
             matched_cats = []
             found_kws = []
             for cat, kws in ICT_DATABASE.items():
                 for kw in kws:
-                    if kw.lower() in title.lower() or kw.lower() in full_text:
+                    if kw.lower() in title_en.lower() or kw.lower() in full_text:
                         if cat not in matched_cats: matched_cats.append(cat)
                         found_kws.append(kw)
 
-            results.append({
-                "Date": doc.get('publication_date'),
-                "Type": doc.get('type'),
-                "ICT_Category": ", ".join(matched_cats) if matched_cats else "General",
-                "Keywords": ", ".join(list(set(found_kws))),
-                "Title": title,
-                "Link": doc.get('html_url')
-            })
+            # [핵심] 키워드 매칭된 데이터만 저장
+            if matched_cats:
+                print(f"🔎 매칭 발견: {title_en[:50]}...")
+                
+                # 제목 한글 번역 (에러 방지를 위해 예외 처리)
+                try:
+                    title_ko = translator.translate(title_en)
+                except:
+                    title_ko = "번역 오류"
+
+                results.append({
+                    "Date": doc.get('publication_date'),
+                    "Type": doc.get('type'),
+                    "ICT_Category": ", ".join(matched_cats),
+                    "Keywords": ", ".join(list(set(found_kws))),
+                    "Title_KO": title_ko, # 한글 제목
+                    "Title_EN": title_en, # 영문 제목
+                    "Link": doc.get('html_url')
+                })
         
         page += 1
-        time.sleep(0.5) # 서버 부하 방지
+        time.sleep(1) # 번역 API 속도 제한 고려
 
     # 3. CSV 저장
     if results:
         with open('Trump_ICT_Full_Report_2025.csv', 'w', newline='', encoding='utf-8-sig') as f:
-            writer = csv.DictWriter(f, fieldnames=["Date", "Type", "ICT_Category", "Keywords", "Title", "Link"])
+            writer = csv.DictWriter(f, fieldnames=["Date", "Type", "ICT_Category", "Keywords", "Title_KO", "Title_EN", "Link"])
             writer.writeheader()
             writer.writerows(results)
-        print(f"🏁 수집 완료! 총 {len(results)}건의 데이터를 저장했습니다.")
-    else:
-        print("⚠️ 수집된 데이터가 없습니다.")
+        print(f"🏁 완료! 매칭된 {len(results)}건의 정책을 저장했습니다.")
 
 if __name__ == "__main__":
     main()
