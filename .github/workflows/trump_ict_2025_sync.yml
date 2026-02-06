@@ -1,0 +1,39 @@
+name: Trump_ICT_2025_Policy_Tracker
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 매일 한국 시간 오전 11시 자동 실행
+  workflow_dispatch:      # 수동 실행 버튼
+
+jobs:
+  trump_policy_job:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Requests
+        run: pip install requests
+
+      - name: Run Trump ICT Bot
+        run: python trump_ict_analyzer_2025.py  # 고쳐진 파일명 적용
+
+      - name: Commit Report
+        run: |
+          git config --global user.name "Trump-Policy-Bot"
+          git config --global user.email "policy-bot@github.com"
+          git add .
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update: 2025 Trump ICT Inventory [$(date +'%Y-%m-%d')]"
+            git push
+          fi
