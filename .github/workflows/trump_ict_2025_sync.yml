@@ -20,11 +20,12 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Requests
-        run: pip install requests
+      - name: Install Dependencies
+        run: |
+          pip install requests deep-translator  # deep-translator 추가
 
       - name: Run Trump ICT Bot
-        run: python trump_ict_analyzer_2025.py  # 고쳐진 파일명 적용
+        run: python trump_ict_analyzer_2025.py
 
       - name: Commit Report
         run: |
