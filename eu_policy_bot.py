@@ -2,49 +2,56 @@ import requests
 import csv
 from xml.etree import ElementTree
 
-def fetch_eu_cellar_rss_2025():
-    # 1. Cellar Notification API URL (RSS 형식 요청)
-    # 2025년 1월 1일부터 현재까지 생성된(CREATE) 'work' 클래스 문서들 호출
+def fetch_eu_cellar_atom_2025():
+    # 1. 더욱 가벼운 Atom 피드 엔드포인트 사용
     url = "http://publications.europa.eu/webapi/notification/ingestion"
+    
+    # 서버 부담을 줄이기 위해 한 번에 50개씩 끊어서 가져오도록 설정
     params = {
         "startDate": "2025-01-01",
         "type": "CREATE",
         "wemiClasses": "work",
+        "pageSize": "50",
         "page": "1"
     }
     
-    # 가이드에 따라 Accept 헤더를 RSS로 명시
+    # 가이드에 따라 Atom 피드 형식 요청
     headers = {
-        "Accept": "application/rss+xml",
-        "User-Agent": "Mozilla/5.0"
+        "Accept": "application/atom+xml",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Intelligence-Bot"
     }
 
-    print(f"📡 Cellar RSS 피드 연결 중 (2025-01-01 이후 신규 데이터)...", flush=True)
+    print(f"📡 Cellar Atom 피드 접속 중... (서버 응답 대기 시간을 120초로 연장합니다)", flush=True)
     
     file_name = 'EU_Policy_2025_Full.csv'
     collected_data = []
 
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=30)
+        # [핵심] timeout을 120초로 대폭 늘려 서버 지연에 대비합니다.
+        response = requests.get(url, params=params, headers=headers, timeout=120)
         
         if response.status_code == 200:
-            # RSS(XML) 파싱
+            # Atom XML 파싱
             root = ElementTree.fromstring(response.content)
-            items = root.findall('.//item')
+            # Atom 네임스페이스 정의
+            ns = {
+                'atom': 'http://www.w3.org/2005/Atom',
+                'notifEntry': 'http://publications.europa.eu/rss/notificationEntry'
+            }
             
-            # XML 네임스페이스 정의 (가이드 참고)
-            ns = {'notifEntry': 'http://publications.europa.eu/rss/notificationEntry'}
+            entries = root.findall('atom:entry', ns)
 
-            for item in items:
-                cellar_id = item.find('notifEntry:cellarId', ns).text if item.find('notifEntry:cellarId', ns) is not None else "N/A"
-                date = item.find('notifEntry:date', ns).text[:10] if item.find('notifEntry:date', ns) is not None else "2025"
+            for entry in entries:
+                cellar_id_tag = entry.find('notifEntry:cellarId', ns)
+                date_tag = entry.find('notifEntry:date', ns)
+                title_tag = entry.find('atom:title', ns)
                 
-                # 가이드에 따르면 상세 정보는 cellarId를 통해 접근 가능
+                cellar_id = cellar_id_tag.text if cellar_id_tag is not None else "N/A"
+                date = date_tag.text[:10] if date_tag is not None else "2025"
+                title = title_tag.text if title_tag is not None else "EU Document"
+                
                 uuid = cellar_id.replace('cellar:', '')
                 link = f"https://publications.europa.eu/resource/cellar/{uuid}"
-                
-                # 제목은 RSS 기본 title 필드 사용
-                title = item.find('title').text if item.find('title') is not None else f"EU Publication ({uuid})"
 
                 collected_data.append({
                     "date": date,
@@ -52,22 +59,23 @@ def fetch_eu_cellar_rss_2025():
                     "link": link
                 })
             
-            print(f"✅ 수집 성공! RSS 피드에서 {len(collected_data)}건의 항목을 발견했습니다.", flush=True)
+            print(f"✅ 수집 성공! 2025년 신규 정책 {len(collected_data)}건을 확보했습니다.", flush=True)
         else:
-            print(f"❌ 접속 에러: {response.status_code}", flush=True)
+            print(f"❌ 서버 응답 에러: {response.status_code}", flush=True)
 
+    except requests.exceptions.Timeout:
+        print("⚠️ EU 서버가 너무 느려 응답 시간을 초과했습니다. 잠시 후 다시 시도됩니다.", flush=True)
     except Exception as e:
-        print(f"❌ 오류 발생: {e}", flush=True)
+        print(f"❌ 기타 오류: {e}", flush=True)
 
-    # 2. 결과 저장 (전수 수집 파이프라인 유지)
+    # 결과 저장 (파일이 있어야 Git Push 에러가 안 납니다)
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
         writer.writeheader()
         if collected_data:
             writer.writerows(collected_data)
         else:
-            writer.writerow({"date": "2025-01-01", "title": "System Active: Monitoring Cellar RSS Feed", "link": "N/A"})
-            print("⚪ 현재 피드에 신규 데이터가 없어 대기 상태 파일을 생성했습니다.", flush=True)
+            writer.writerow({"date": "2025-02-09", "title": "Monitoring Mode: Waiting for Cellar server response", "link": "N/A"})
 
 if __name__ == "__main__":
-    fetch_eu_cellar_rss_2025()
+    fetch_eu_cellar_atom_2025()
