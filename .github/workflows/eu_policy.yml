@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests SPARQLWrapper
+          pip install requests beautifulsoup4
 
       - name: Run EU Policy Bot
         run: python eu_policy_bot.py
