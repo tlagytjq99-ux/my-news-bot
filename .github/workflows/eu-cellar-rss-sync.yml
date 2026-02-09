@@ -1,0 +1,33 @@
+name: EU-Cellar-RSS-Intelligence-Sync
+
+on:
+  schedule:
+    - cron: '30 2 * * *' # 매일 새벽 시간 자동 실행
+  workflow_dispatch: 
+
+jobs:
+  sync-rss:
+    name: "Cellar RSS Data Extraction"
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v3
+
+      - name: 🐍 Python Setup
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: ⚙️ Install Requests
+        run: pip install requests
+
+      - name: 🚀 Run RSS Collector
+        run: python eu_policy_bot.py
+
+      - name: 💾 Commit Intelligence
+        run: |
+          git config --global user.name "Cellar-RSS-Bot"
+          git config --global user.email "rss-bot@github.com"
+          git add EU_Policy_2025_Full.csv
+          git commit -m "Update: 2025 Cellar RSS Data [$(date +'%Y-%m-%d')]" || echo "No changes"
+          git push
