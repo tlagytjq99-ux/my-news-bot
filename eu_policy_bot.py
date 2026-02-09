@@ -1,39 +1,32 @@
 import requests
 import csv
 
-def fetch_eu_cellar_perfect_guide():
-    # 공식 문서에서 지정한 SPARQL 엔드포인트
+def fetch_eu_cellar_recovery():
+    # 공식 SPARQL 엔드포인트
     sparql_url = "https://publications.europa.eu/webapi/rdf/sparql"
     
-    # [가이드 최적화 쿼리]
-    # 1. 여러 날짜 필드(document, creation)를 동시에 체크
-    # 2. 2025년 키워드 매칭
-    # 3. 영어(ENG) 결과만 한정
+    # [수정] 2024년 데이터까지 범위를 넓혀서 서버 응답을 강제로 끌어냅니다.
     query = """
     PREFIX cdm: <http://publications.europa.eu/ontology/cdm#>
     
     SELECT DISTINCT ?work ?date ?title
     WHERE {
-      {
-        ?work cdm:work_date_document ?date .
-      } UNION {
-        ?work cdm:work_date_creation ?date .
-      }
-      
+      ?work cdm:work_date_document ?date .
       ?work cdm:work_has_expression ?expr .
       ?expr cdm:expression_title ?title .
       ?expr cdm:expression_uses_language <http://publications.europa.eu/resource/authority/language/ENG> .
       
-      FILTER(contains(str(?date), "2025"))
+      # 2024년 혹은 2025년 데이터 모두 수집
+      FILTER (contains(str(?date), "2024") || contains(str(?date), "2025"))
     }
     ORDER BY DESC(?date)
     LIMIT 100
     """
 
-    file_name = 'EU_Policy_2025_Full.csv'
+    file_name = 'EU_Policy_Check.csv'
     headers = {"Accept": "application/sparql-results+json"}
 
-    print("📖 [공식 가이드 적용] Cellar DB 심층 쿼리를 시작합니다...", flush=True)
+    print("🔍 [서버 점검] 2024-2025년 통합 데이터를 조회합니다...", flush=True)
 
     try:
         response = requests.post(sparql_url, data={'query': query}, headers=headers, timeout=60)
@@ -48,8 +41,6 @@ def fetch_eu_cellar_perfect_guide():
                 uuid = work_uri.split('/')[-1]
                 title = item['title']['value']
                 date = item['date']['value']
-                
-                # 상세 페이지 링크
                 link = f"https://op.europa.eu/en/publication-detail/-/publication/{uuid}"
                 
                 all_records.append({
@@ -63,9 +54,10 @@ def fetch_eu_cellar_perfect_guide():
                     writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
                     writer.writeheader()
                     writer.writerows(all_records)
-                print(f"✅ [성공] {len(all_records)}건의 데이터를 수집했습니다!", flush=True)
+                print(f"✅ [성공] {len(all_records)}건의 데이터를 찾았습니다! 파일명: {file_name}", flush=True)
+                print(f"📌 샘플 데이터 날짜: {all_records[0]['date']}", flush=True)
             else:
-                print("⚠️ 2025년 데이터가 아직 인덱싱되지 않았습니다. 2024년 말 데이터 수집을 고려해 보세요.", flush=True)
+                print("⚠️ 2024년 데이터조차 없습니다. 엔드포인트 자체를 점검해야 합니다.", flush=True)
         else:
             print(f"❌ 서버 응답 오류: {response.status_code}", flush=True)
 
@@ -73,4 +65,4 @@ def fetch_eu_cellar_perfect_guide():
         print(f"❌ 실행 오류: {e}", flush=True)
 
 if __name__ == "__main__":
-    fetch_eu_cellar_perfect_guide()
+    fetch_eu_cellar_recovery()
