@@ -4,19 +4,26 @@ from datetime import datetime
 from xml.etree import ElementTree
 from bs4 import BeautifulSoup
 import time
+import os
 
-def fetch_eu_clean_data():
+def fetch_eu_today_policy():
+    # 1. 오늘 날짜 설정 (2026-02-09)
     today = datetime.now().strftime('%Y-%m-%d')
-    # 2025년 데이터를 위해 날짜 범위를 살짝 넓히거나 특정 시점 타겟팅
+    
+    # 2. EU 알림 서비스 API 호출 (오늘 생성된 모든 문서 대상)
     url = "http://publications.europa.eu/webapi/notification/ingestion"
-    params = {"startDate": today, "type": "CREATE", "wemiClasses": "work", "pageSize": "20"}
+    params = {
+        "startDate": today,
+        "type": "CREATE",
+        "pageSize": "100" 
+    }
     headers = {"Accept": "application/rss+xml", "User-Agent": "Mozilla/5.0"}
 
-    print(f"📡 데이터 정화 작업 시작 (사람이 볼 수 있는 링크로 변환)...", flush=True)
-    collected_data = []
+    print(f"🕵️ [오늘의 정책 탐색] {today}자 문서를 분석 중입니다...", flush=True)
+    policy_data = []
 
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=30)
+        response = requests.get(url, params=params, headers=headers, timeout=60)
         root = ElementTree.fromstring(response.content)
         items = root.findall('.//item')
 
@@ -28,47 +35,61 @@ def fetch_eu_clean_data():
                     break
             
             if cellar_id != "N/A":
-                # [수정 1] 사람이 보기 편한 상세 페이지 주소로 생성
-                # 이 주소는 브라우저에서 열면 해당 문서의 요약 페이지로 연결됩니다.
+                # 사람이 읽을 수 있는 요약 페이지
                 display_link = f"https://publications.europa.eu/en/publication-detail/-/publication/{cellar_id}"
                 
-                # [수정 2] 제목 역추적 (상세 페이지에서 추출)
                 try:
-                    time.sleep(1)
-                    detail_res = requests.get(display_link, headers=headers, timeout=10)
-                    if detail_res.status_code == 200:
-                        soup = BeautifulSoup(detail_res.text, 'html.parser')
-                        
-                        # 웹페이지 구조에 따라 제목 위치가 다를 수 있으므로 우선순위 설정
-                        title = "No Title"
-                        if soup.title:
-                            title = soup.title.string.split(' - ')[0].replace('Publication detail', '').strip()
-                        
-                        # 만약 제목이 너무 짧거나 이상하면 다른 태그 탐색
-                        if len(title) < 5 and soup.find('h1'):
-                            title = soup.find('h1').get_text(strip=True)
+                    # 서버 부하 방지 및 정밀 파싱
+                    time.sleep(0.5)
+                    detail_res = requests.get(display_link + "?language=en", headers=headers, timeout=10)
+                    soup = BeautifulSoup(detail_res.text, 'html.parser')
+                    
+                    # 제목 추출 (h1 태그 또는 title 태그)
+                    title = ""
+                    h1_title = soup.find('h1', class_='document-title')
+                    if h1_title:
+                        title = h1_title.get_text(strip=True)
+                    elif soup.title:
+                        title = soup.title.string.split(' - ')[0].replace('Publication detail', '').strip()
 
-                        collected_data.append({
+                    # 3. [중요] 정책 필터링 로직
+                    # '법(Law)'보다는 '방향성(Policy)'을 나타내는 단어들
+                    policy_keywords = ["Report", "Communication", "Strategy", "Proposal", "Action Plan", "Working Document", "COM(", "SWD(", "Opinion", "Notice"]
+                    # 단순 절차성 법령/오타 수정은 제외
+                    exclude_keywords = ["Rettifica", "Berichtigung", "Rectificatif", "Decision of the Court"]
+
+                    is_policy = any(pk.lower() in title.lower() for pk in policy_keywords)
+                    is_excluded = any(ek.lower() in title.lower() for ek in exclude_keywords)
+
+                    if is_policy and not is_excluded:
+                        policy_data.append({
                             "date": today,
                             "title": title,
                             "link": display_link
                         })
-                        print(f"✅ 수집완료: {title[:40]}...", flush=True)
+                        print(f"🎯 정책 발견: {title[:60]}...", flush=True)
                 except:
                     continue
-
+                    
     except Exception as e:
-        print(f"❌ 오류 발생: {e}", flush=True)
+        print(f"❌ 수집 중 오류: {e}", flush=True)
 
-    # 저장
-    file_name = 'EU_Policy_2025_Full.csv'
-    with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
+    # 4. 결과 저장 (Append 모드)
+    save_to_csv(policy_data)
+
+def save_to_csv(new_data):
+    file_name = 'EU_Today_Policy_Test.csv'
+    file_exists = os.path.isfile(file_name)
+    
+    with open(file_name, 'a', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
-        writer.writeheader()
-        if collected_data:
-            writer.writerows(collected_data)
+        if not file_exists:
+            writer.writeheader()
+        if new_data:
+            writer.writerows(new_data)
+            print(f"💾 총 {len(new_data)}건의 오늘자 정책 리스트가 저장되었습니다.", flush=True)
         else:
-            writer.writerow({"date": today, "title": "Searching...", "link": "N/A"})
+            print("ℹ️ 오늘 새로 발행된 정책 문서가 아직 없습니다.", flush=True)
 
 if __name__ == "__main__":
-    fetch_eu_clean_data()
+    fetch_eu_today_policy()
