@@ -1,51 +1,63 @@
 import requests
 import csv
+import time
 
-def search_eu_hub():
-    # EU Data Hub 검색 엔드포인트
+def search_eu_hub_2025():
+    # 데이터 허브 검색 엔드포인트
     url = "https://data.europa.eu/api/hub/search/datasets"
     
-    # 검색 조건 설정
+    # 400 에러 방지를 위해 가장 안정적인 파라미터만 사용
     params = {
-        "q": "policy",             # 검색어
-        "limit": 50,               # 가져올 개수
-        "sort": "modified-desc",    # 최근 수정순
-        "facets": '{"issued_after":["2025-01-01T00:00:00Z"]}' # 2025년 이후 발행
+        "q": "policy",               # 검색어
+        "limit": "100",              # 한 번에 100개씩
+        "sort": "modified-desc",      # 최근 수정된 순서대로 (2025년이 위로 오게)
+        "language": "en"
     }
     
-    print("🇪🇺 EU Data Hub에서 2025년 정책 데이터셋 검색 중...", flush=True)
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json"
+    }
+    
+    print("🇪🇺 EU Data Hub 정밀 검색 시작 (2025년 데이터 필터링)...", flush=True)
     
     try:
-        response = requests.get(url, params=params, timeout=30)
+        response = requests.get(url, params=params, headers=headers, timeout=30)
         
         if response.status_code == 200:
             data = response.json()
-            # 검색 결과는 result['datasets'] 안에 들어있습니다.
+            # API 응답 구조: result -> datasets
             datasets = data.get('result', {}).get('datasets', [])
             
             results = []
             for ds in datasets:
-                results.append({
-                    "제목": ds.get('title', {}).get('en', 'No Title'),
-                    "설명": ds.get('description', {}).get('en', 'No Description')[:100] + "...",
-                    "발행기관": ds.get('publisher', {}).get('name', 'N/A'),
-                    "수정일": ds.get('modified', 'N/A'),
-                    "상세링크": f"https://data.europa.eu/data/datasets/{ds.get('id')}"
-                })
+                modified_date = ds.get('modified', '') # 수정일 확인
+                
+                # 2025년에 생성되거나 수정된 데이터만 골라냅니다.
+                if "2025" in modified_date:
+                    results.append({
+                        "발행일": modified_date,
+                        "제목": ds.get('title', {}).get('en', 'No Title'),
+                        "발행처": ds.get('publisher', {}).get('name', 'N/A'),
+                        "상세주소": f"https://data.europa.eu/data/datasets/{ds.get('id')}"
+                    })
             
             if results:
-                with open('EU_Hub_Datasets_2025.csv', 'w', newline='', encoding='utf-8-sig') as f:
-                    writer = csv.DictWriter(f, fieldnames=["제목", "설명", "발행기관", "수정일", "상세링크"])
+                file_name = 'EU_Hub_Policy_2025.csv'
+                with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
+                    writer = csv.DictWriter(f, fieldnames=["발행일", "제목", "발행처", "상세주소"])
                     writer.writeheader()
                     writer.writerows(results)
-                print(f"✅ 총 {len(results)}개의 정책 데이터셋 목록을 저장했습니다!", flush=True)
+                print(f"✅ 성공! 2025년 관련 데이터셋 {len(results)}개를 찾았습니다.", flush=True)
             else:
-                print("⚪ 조건에 맞는 데이터셋을 찾지 못했습니다.", flush=True)
+                print("⚪ 검색 결과 중 2025년 데이터가 아직 없습니다.", flush=True)
+                
         else:
-            print(f"❌ 에러 발생: {response.status_code}", flush=True)
+            print(f"❌ 접속 실패: {response.status_code}", flush=True)
+            print(f"🔗 시도한 URL: {response.url}", flush=True)
             
     except Exception as e:
-        print(f"❌ 오류: {e}", flush=True)
+        print(f"❌ 시스템 오류: {e}", flush=True)
 
 if __name__ == "__main__":
-    search_eu_hub()
+    search_eu_hub_2025()
