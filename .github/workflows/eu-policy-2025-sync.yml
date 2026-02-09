@@ -1,0 +1,34 @@
+name: EU Policy Intelligence 2025
+
+on:
+  schedule:
+    - cron: '0 9 * * *' # 매일 정해진 시간에 자동 수집
+  workflow_dispatch:    # 수동 실행 버튼
+
+jobs:
+  collect:
+    name: "2025 Policy Data Sync"
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Dependencies
+        run: pip install requests
+
+      - name: Run Collector
+        run: python eu_policy_bot.py
+
+      - name: Push CSV
+        run: |
+          git config --global user.name "EU-Intelligence-Bot"
+          git config --global user.email "bot@github.com"
+          git add EU_Policy_2025_Full.csv
+          git commit -m "chore: update 2025 policy data [$(date +'%Y-%m-%d')]" || echo "No changes"
+          git push
