@@ -1,63 +1,58 @@
 import requests
 import csv
-import time
 
-def search_eu_hub_2025():
-    # 데이터 허브 검색 엔드포인트
-    url = "https://data.europa.eu/api/hub/search/datasets"
+def fetch_eu_ckan_2025():
+    # EU 데이터 허브의 표준 CKAN 통로입니다. (검증된 주소)
+    url = "https://data.europa.eu/api/hub/search/search"
     
-    # 400 에러 방지를 위해 가장 안정적인 파라미터만 사용
+    # 파라미터 구조를 CKAN 표준에 맞춰서 다시 짰습니다.
     params = {
-        "q": "policy",               # 검색어
-        "limit": "100",              # 한 번에 100개씩
-        "sort": "modified-desc",      # 최근 수정된 순서대로 (2025년이 위로 오게)
-        "language": "en"
+        "q": "policy",
+        "rows": 100,               # limit 대신 rows 사용
+        "sort": "metadata_modified desc" # 수정일 기준 내림차순
     }
     
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json"
-    }
-    
-    print("🇪🇺 EU Data Hub 정밀 검색 시작 (2025년 데이터 필터링)...", flush=True)
+    print("🇪🇺 EU 데이터 허브(CKAN 표준) 접속 시도 중...", flush=True)
     
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=30)
+        response = requests.get(url, params=params, timeout=30)
+        
+        # 로그로 주소를 확인합니다.
+        print(f"📡 시도 URL: {response.url}", flush=True)
+        print(f"📡 응답 코드: {response.status_code}", flush=True)
         
         if response.status_code == 200:
             data = response.json()
-            # API 응답 구조: result -> datasets
-            datasets = data.get('result', {}).get('datasets', [])
+            # CKAN 표준 응답 구조: result -> results
+            datasets = data.get('result', {}).get('results', [])
             
             results = []
             for ds in datasets:
-                modified_date = ds.get('modified', '') # 수정일 확인
+                modified = ds.get('metadata_modified', '')
                 
-                # 2025년에 생성되거나 수정된 데이터만 골라냅니다.
-                if "2025" in modified_date:
+                # 2025년 데이터만 필터링
+                if "2025" in modified:
                     results.append({
-                        "발행일": modified_date,
-                        "제목": ds.get('title', {}).get('en', 'No Title'),
-                        "발행처": ds.get('publisher', {}).get('name', 'N/A'),
-                        "상세주소": f"https://data.europa.eu/data/datasets/{ds.get('id')}"
+                        "발행일": modified,
+                        "제목": ds.get('title', 'No Title'),
+                        "기관": ds.get('organization', {}).get('title', 'N/A'),
+                        "링크": f"https://data.europa.eu/data/datasets/{ds.get('name')}"
                     })
             
             if results:
-                file_name = 'EU_Hub_Policy_2025.csv'
+                file_name = 'EU_Hub_Standard_2025.csv'
                 with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
-                    writer = csv.DictWriter(f, fieldnames=["발행일", "제목", "발행처", "상세주소"])
+                    writer = csv.DictWriter(f, fieldnames=["발행일", "제목", "기관", "링크"])
                     writer.writeheader()
                     writer.writerows(results)
-                print(f"✅ 성공! 2025년 관련 데이터셋 {len(results)}개를 찾았습니다.", flush=True)
+                print(f"🎉 성공! 2025년 정책 데이터셋 {len(results)}건 수집 완료!", flush=True)
             else:
-                print("⚪ 검색 결과 중 2025년 데이터가 아직 없습니다.", flush=True)
-                
+                print("⚪ 2025년 날짜가 포함된 데이터셋을 찾지 못했습니다.", flush=True)
         else:
-            print(f"❌ 접속 실패: {response.status_code}", flush=True)
-            print(f"🔗 시도한 URL: {response.url}", flush=True)
-            
+            print(f"❌ 또 400 에러가 난다면, 서버가 해당 파라미터 조합을 막은 것입니다.", flush=True)
+
     except Exception as e:
         print(f"❌ 시스템 오류: {e}", flush=True)
 
 if __name__ == "__main__":
-    search_eu_hub_2025()
+    fetch_eu_ckan_2025()
