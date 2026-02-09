@@ -1,0 +1,37 @@
+name: EU-Policy-Scraper-2025
+
+on:
+  schedule:
+    - cron: '0 10 * * *' # 매일 한국 시간 기준 오후 7시 자동 실행
+  workflow_dispatch:    # 필요할 때 수동으로 'Run workflow' 버튼 클릭 가능
+
+jobs:
+  build-and-run:
+    name: "Safe Data Extraction"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📦 소스코드 체크아웃
+        uses: actions/checkout@v3
+
+      - name: 🐍 파이썬 환경 설정
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: ⚙️ 필수 라이브러리 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4  # <--- 스크래핑을 위한 필수 도구
+
+      - name: 🚀 보안 스크래퍼 실행
+        run: python eu_policy_bot.py
+
+      - name: 💾 수집 데이터 동기화 (Git Push)
+        run: |
+          git config --global user.name "EU-Scraper-Bot"
+          git config --global user.email "scraper-bot@github.com"
+          git add EU_Policy_2025_Full.csv
+          # 변경사항이 있을 때만 커밋 (에러 방지)
+          git commit -m "chore: update 2025 policy data [$(date +'%Y-%m-%d')]" || echo "No changes to commit"
+          git push
