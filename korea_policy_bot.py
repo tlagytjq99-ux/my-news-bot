@@ -3,80 +3,83 @@ import xml.etree.ElementTree as ET
 import csv
 import os
 import time
+from datetime import datetime, timedelta
 
 def main():
-    # 깃허브 시크릿에 넣으신 그 인코딩 키를 가져옵니다.
+    # 1. 시크릿에서 키 가져오기 (인코딩된 키 권장)
     SERVICE_KEY = os.getenv("MY_SERVICE_KEY")
-    
+    if not SERVICE_KEY:
+        print("❌ 에러: MY_SERVICE_KEY를 찾을 수 없습니다.")
+        return
+
     results = []
-    page = 1
-    target_year = "2025"
-    keep_going = True
+    # 2025년 전체를 수집하기 위한 날짜 설정
+    start_date = datetime(2025, 1, 1)
+    end_of_year = datetime(2025, 12, 31)
+    
+    print("🇰🇷 대한민국 정책브리핑(API) 전수 수집을 시작합니다...")
 
-    # 대표님이 확인하신 바로 그 요청 주소!
-    base_url = "http://apis.data.go.kr/1371000/pressReleaseService/pressReleaseList"
+    current_start = start_date
+    while current_start <= end_of_year:
+        # 한국 API 특성상 구간을 짧게(15일) 잡아야 응답이 안정적입니다.
+        current_end = current_start + timedelta(days=14)
+        if current_end > end_of_year:
+            current_end = end_of_year
+            
+        s_str = current_start.strftime("%Y%m%d")
+        e_str = current_end.strftime("%Y%m%d")
+        
+        print(f"📡 구간 수집 중: {s_str} ~ {e_str}", end=" ", flush=True)
 
-    print(f"🚀 인증 성공 확인! 2025년 데이터 수집을 시작합니다.")
-
-    while keep_going:
-        # 인증키를 URL에 직접 넣는 가장 확실한 방식
-        request_url = (
-            f"{base_url}?serviceKey={SERVICE_KEY}"
-            f"&pageNo={page}"
-            f"&numOfRows=100"
+        # 필수 파라미터를 URL에 직접 주입 (인코딩 중복 방지)
+        url = (
+            f"http://apis.data.go.kr/1371000/pressReleaseService/pressReleaseList"
+            f"?serviceKey={SERVICE_KEY}"
+            f"&startDate={s_str}"
+            f"&endDate={e_str}"
+            f"&pageNo=1"
+            f"&numOfRows=500"
         )
 
         try:
-            resp = requests.get(request_url, timeout=30)
+            # 타임아웃을 넉넉히 주어 서버 지연에 대비합니다.
+            resp = requests.get(url, timeout=45)
             
             if resp.status_code == 200 and "NewsItem" in resp.text:
                 root = ET.fromstring(resp.content)
                 items = root.findall('.//NewsItem')
                 
-                if not items:
-                    print("\n🏁 모든 페이지를 훑었습니다.")
-                    break
-
                 for item in items:
-                    pub_date = item.findtext('ApproveDate')
-                    if not pub_date: continue
-                    
-                    # 2025년 데이터만 선별해서 담기
-                    if target_year in pub_date:
-                        results.append({
-                            "발행일": pub_date,
-                            "부처": item.findtext('MinisterCode'),
-                            "제목": item.findtext('Title'),
-                            "링크": item.findtext('OriginalUrl')
-                        })
-                    
-                    # 2024년이 보이기 시작하면 과거 데이터이므로 종료
-                    elif "2024" in pub_date:
-                        keep_going = False
-                        break
-
-                print(f"📥 {page}페이지 분석 중... (2025년 누적: {len(results)}건)", end="\r")
-                page += 1
+                    results.append({
+                        "발행일": item.findtext('ApproveDate'),
+                        "부처": item.findtext('MinisterCode'),
+                        "제목": item.findtext('Title'),
+                        "링크": item.findtext('OriginalUrl')
+                    })
+                print(f"✅ {len(items)}건 완료")
             else:
-                print(f"\n📡 데이터 수집 중단 (더 이상 항목이 없거나 오류 발생)")
-                break
+                # 인증 오류나 데이터 없음 처리
+                if "Unauthorized" in resp.text:
+                    print("❌ 인증 오류(401)! 키를 확인하세요.")
+                    break
+                print("⚪ 데이터 없음")
                 
         except Exception as e:
-            print(f"\n❌ 에러: {e}")
-            break
+            print(f"❌ 에러 발생: {e}")
         
-        time.sleep(0.1)
+        current_start = current_end + timedelta(days=1)
+        time.sleep(0.3) # 서버 부하 방지용 짧은 휴식
 
-    # 최종 결과 저장
+    # 2. 결과 저장
     file_name = 'Korea_Policy_2025.csv'
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["발행일", "부처", "제목", "링크"])
         writer.writeheader()
         if results:
             writer.writerows(results)
-            print(f"\n\n✅ 수집 완료! 총 {len(results)}건을 'Korea-Policy-2025-Data'에 담았습니다.")
+            print(f"\n🏁 수집 완료! 총 {len(results)}건이 '{file_name}'에 저장되었습니다.")
         else:
-            print("\n\n⚠️ 2025년 데이터를 찾지 못했습니다. API 응답을 다시 확인해 주세요.")
+            print("\n⚠️ 수집된 데이터가 없습니다.")
 
 if __name__ == "__main__":
     main()
