@@ -26,10 +26,16 @@ jobs:
       - name: Run EU Policy Bot
         run: python eu_policy_bot.py
 
-      - name: Commit and Push changes
+      - name: Commit and Push
         run: |
           git config --global user.name "GitHub Action Bot"
           git config --global user.email "actions@github.com"
-          git add EU_Policy_2025_Full.csv
-          git commit -m "Update EU Policy Data 2025 [$(date)]" || echo "No changes to commit"
-          git push
+          
+          # 파일이 존재하고, 수정사항이 있을 때만 푸시
+          if [ -f EU_Policy_2025_Full.csv ]; then
+            git add EU_Policy_2025_Full.csv
+            git commit -m "Update EU Policy 2025 [$(date)]" || echo "No changes to commit"
+            git push
+          else
+            echo "No file to add"
+          fi
