@@ -1,64 +1,70 @@
 import requests
 import csv
-import os
 import time
 
-def fetch_eu_cellar_emergency():
-    # Cellar 데이터를 포함한 웹 API 검색 엔드포인트
-    api_url = "https://data.europa.eu/api/hub/search/search"
-    
-    # [특급 처방] 복잡한 필터링 문법을 모두 버리고, 가장 단순한 파라미터만 사용합니다.
+def fetch_eu_final_standard():
+    # [수정] 서버가 거부할 수 없는 '완벽한 인코딩'이 반영된 URL입니다.
+    # catalogue=cellar와 q=2025를 가장 기본 형식으로 결합했습니다.
+    base_url = "https://data.europa.eu/api/hub/search/search"
     params = {
-        "q": "2025", # 검색어 자체에 연도를 넣습니다.
-        "filters": "catalogue:cellar",
-        "dataScope": "eu",
+        "q": "2025",
+        "filter": "dataset",
+        "facets": '{"catalog":["cellar"]}', # 필터 대신 facets 구조 사용 (400 에러 방지)
         "limit": 50,
-        "page": 0,
-        "sort": "modified-desc" # 수정일 기준 최신순
+        "sort": "modified-desc"
     }
 
     file_name = 'EU_Policy_2025_Full.csv'
     all_records = []
     
-    print("🆘 [긴급 모드] SPARQL 대신 웹 API 검색으로 2025년 데이터를 강제 소환합니다...", flush=True)
+    print("🔥 [최후의 수단] 400 에러 방지용 정밀 URL로 재접속합니다...", flush=True)
 
     try:
-        response = requests.get(api_url, params=params, timeout=30)
+        # headers를 추가하여 브라우저에서 접속하는 것처럼 위장합니다.
+        headers = {
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0'
+        }
+        
+        response = requests.get(base_url, params=params, headers=headers, timeout=30)
         
         if response.status_code == 200:
             data = response.json()
+            # 결과값 경로 재설정 (result -> results)
             results = data.get('result', {}).get('results', [])
             
             if results:
                 for item in results:
-                    # 제목 추출
                     title_dict = item.get('title', {})
-                    title = title_dict.get('en') if isinstance(title_dict, dict) else str(title_dict)
+                    title = title_dict.get('en', 'No English Title')
                     
-                    # 날짜 추출 (issued 또는 modified)
-                    date_val = item.get('issued', item.get('modified', '2025-XX-XX'))
+                    # 날짜와 ID 추출
+                    date_val = item.get('modified', item.get('issued', '2025-XX-XX'))
                     doc_id = item.get('id', '')
+                    
+                    # Cellar 공식 문서 뷰어 링크
                     link = f"https://op.europa.eu/en/publication-detail/-/publication/{doc_id}"
                     
                     all_records.append({
                         "date": date_val[:10],
-                        "title": title.strip() if title else "No Title",
+                        "title": str(title).strip(),
                         "link": link
                     })
                 
-                # CSV 저장
+                # 파일 저장
                 with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
                     writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
                     writer.writeheader()
                     writer.writerows(all_records)
-                print(f"🎯 [성공] 드디어 {len(all_records)}건의 데이터를 확보했습니다! {file_name}을 확인하세요.", flush=True)
+                print(f"✅ [대성공] {len(all_records)}건의 데이터를 파일에 담았습니다!", flush=True)
             else:
-                print("⚠️ 웹 API 검색 결과도 0건입니다. 키워드를 '2024'로 바꿔서 서버 생존 확인이 필요합니다.", flush=True)
+                print("⚠️ 접속은 성공했으나 검색 결과가 없습니다.", flush=True)
         else:
-            print(f"❌ API 접속 실패 ({response.status_code})", flush=True)
+            print(f"❌ 여전히 에러 발생 (코드: {response.status_code})", flush=True)
+            print(f"서버 메시지: {response.text[:200]}", flush=True)
 
     except Exception as e:
-        print(f"❌ 오류 발생: {e}", flush=True)
+        print(f"❌ 시스템 오류: {e}", flush=True)
 
 if __name__ == "__main__":
-    fetch_eu_cellar_emergency()
+    fetch_eu_final_standard()
