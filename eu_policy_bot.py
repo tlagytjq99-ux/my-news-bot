@@ -1,75 +1,73 @@
 import requests
 import csv
-import datetime
+from xml.etree import ElementTree
 
-def fetch_eu_2025_data():
-    # 1. EU 공공데이터 포털 검색 API 엔드포인트
-    # 2025년 발행된(issued) 데이터셋을 검색하는 쿼리
-    api_url = "https://data.europa.eu/api/hub/search/datasets"
-    
+def fetch_eu_cellar_rss_2025():
+    # 1. Cellar Notification API URL (RSS 형식 요청)
+    # 2025년 1월 1일부터 현재까지 생성된(CREATE) 'work' 클래스 문서들 호출
+    url = "http://publications.europa.eu/webapi/notification/ingestion"
     params = {
-        "q": "2025",  # 2025 키워드 포함
-        "filter": "dataset",
-        "sort": "issued_desc", # 최신 발행순
-        "limit": 100,
-        "facets": '{"issued":["2025"]}' # 2025년 발행본으로 강제 필터링
+        "startDate": "2025-01-01",
+        "type": "CREATE",
+        "wemiClasses": "work",
+        "page": "1"
     }
     
+    # 가이드에 따라 Accept 헤더를 RSS로 명시
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json"
+        "Accept": "application/rss+xml",
+        "User-Agent": "Mozilla/5.0"
     }
 
-    print(f"🚀 [2025 전수조사] EU Data Portal API 연결 중...", flush=True)
+    print(f"📡 Cellar RSS 피드 연결 중 (2025-01-01 이후 신규 데이터)...", flush=True)
     
     file_name = 'EU_Policy_2025_Full.csv'
     collected_data = []
 
     try:
-        response = requests.get(api_url, params=params, headers=headers, timeout=30)
+        response = requests.get(url, params=params, headers=headers, timeout=30)
         
         if response.status_code == 200:
-            data = response.json()
-            # API 응답 구조에 맞게 데이터 추출
-            result = data.get('result', {})
-            datasets = result.get('datasets', [])
+            # RSS(XML) 파싱
+            root = ElementTree.fromstring(response.content)
+            items = root.findall('.//item')
             
-            for ds in datasets:
-                # 제목, 날짜, 상세 페이지 링크 추출
-                title = ds.get('title', {}).get('en', 'No English Title')
-                date = ds.get('issued', '2025-01-01T00:00:00')[:10]
-                # 고유 ID를 통해 상세 페이지 링크 생성
-                ds_id = ds.get('id', '')
-                link = f"https://data.europa.eu/data/datasets/{ds_id}?locale=en"
+            # XML 네임스페이스 정의 (가이드 참고)
+            ns = {'notifEntry': 'http://publications.europa.eu/rss/notificationEntry'}
+
+            for item in items:
+                cellar_id = item.find('notifEntry:cellarId', ns).text if item.find('notifEntry:cellarId', ns) is not None else "N/A"
+                date = item.find('notifEntry:date', ns).text[:10] if item.find('notifEntry:date', ns) is not None else "2025"
                 
+                # 가이드에 따르면 상세 정보는 cellarId를 통해 접근 가능
+                uuid = cellar_id.replace('cellar:', '')
+                link = f"https://publications.europa.eu/resource/cellar/{uuid}"
+                
+                # 제목은 RSS 기본 title 필드 사용
+                title = item.find('title').text if item.find('title') is not None else f"EU Publication ({uuid})"
+
                 collected_data.append({
                     "date": date,
                     "title": title,
                     "link": link
                 })
             
-            print(f"✅ 수집 성공: {len(collected_data)}건의 2025년 정책 데이터 확보.", flush=True)
+            print(f"✅ 수집 성공! RSS 피드에서 {len(collected_data)}건의 항목을 발견했습니다.", flush=True)
         else:
-            print(f"❌ API 응답 에러: {response.status_code}", flush=True)
+            print(f"❌ 접속 에러: {response.status_code}", flush=True)
 
     except Exception as e:
-        print(f"❌ 시스템 오류: {e}", flush=True)
+        print(f"❌ 오류 발생: {e}", flush=True)
 
-    # 2. 결과 저장 (데이터가 없어도 헤더가 포함된 파일을 생성하여 Git 에러 방지)
+    # 2. 결과 저장 (전수 수집 파이프라인 유지)
     with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
         writer.writeheader()
-        
         if collected_data:
             writer.writerows(collected_data)
         else:
-            # 데이터가 없을 경우 가상 데이터 1건 삽입 (자동화 파이프라인 유지용)
-            writer.writerow({
-                "date": datetime.datetime.now().strftime("%Y-%m-%d"),
-                "title": "System Active: Waiting for 2025 data indexing",
-                "link": "https://data.europa.eu/en"
-            })
-            print("⚪ 현재 수집된 실시간 데이터가 없어 대기 상태로 파일을 생성했습니다.", flush=True)
+            writer.writerow({"date": "2025-01-01", "title": "System Active: Monitoring Cellar RSS Feed", "link": "N/A"})
+            print("⚪ 현재 피드에 신규 데이터가 없어 대기 상태 파일을 생성했습니다.", flush=True)
 
 if __name__ == "__main__":
-    fetch_eu_2025_data()
+    fetch_eu_cellar_rss_2025()
