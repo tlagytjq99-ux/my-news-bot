@@ -1,77 +1,62 @@
 import requests
 import csv
-import time
 
-def fetch_eu_press_final_2025():
-    # 400 에러 방지를 위해 가장 안전한 기본 베이스 URL
-    base_url = "https://ec.europa.eu/commission/presscorner/api/documents"
+def fetch_eu_cellar_2025():
+    # Cellar SPARQL 엔드포인트 주소
+    url = "https://publications.europa.eu/webapi/rdf/sparql"
     
-    all_results = []
-    page = 1
+    # 2025년 1월 1일 이후의 법령(Work)을 찾는 SPARQL 쿼리
+    sparql_query = """
+    PREFIX cdm: <http://publications.europa.eu/ontology/cdm#>
+    PREFIX dc: <http://purl.org/dc/elements/1.1/>
     
-    print("🇪🇺 [마지막 승부] 2025년 정책 데이터 수집을 재시도합니다...", flush=True)
+    SELECT DISTINCT ?work ?title ?date
+    WHERE {
+      ?work a cdm:resource_legal ;
+            cdm:resource_legal_date_entry-into-force ?date ;
+            cdm:work_has_title ?title_resource .
+      ?title_resource cdm:title_has_value ?title .
+      FILTER(?date >= "2025-01-01"^^xsd:date)
+    }
+    ORDER BY DESC(?date)
+    LIMIT 100
+    """
     
-    while True:
-        # 파라미터를 URL 뒤에 수동으로 정확히 붙입니다. (대소문자 및 형식 강제 고정)
-        # documentType=IP (Press Release), documentType=ME (Memo) 등 중 핵심인 IP만 타겟팅
-        request_url = f"{base_url}?language=en&documentType=IP&pageSize=50&pageNumber={page}"
+    params = {
+        "query": sparql_query,
+        "format": "application/sparql-results+json"
+    }
+    
+    print("🏛️ EU Cellar 창고에서 2025년 최신 법령을 검색 중...", flush=True)
+    
+    try:
+        response = requests.get(url, params=params, timeout=60)
         
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json, text/plain, */*"
-        }
-        
-        try:
-            response = requests.get(request_url, headers=headers, timeout=30)
+        if response.status_code == 200:
+            data = response.json()
+            rows = data.get('results', {}).get('bindings', [])
             
-            if response.status_code == 200:
-                data = response.json()
-                items = data.get('items', [])
-                
-                if not items:
-                    print("🏁 더 이상 가져올 데이터가 없습니다.", flush=True)
-                    break
-                
-                stop_signal = False
-                for item in items:
-                    date_str = item.get('releaseDate', '') # 예: "05/02/2025"
-                    
-                    if "2025" in date_str:
-                        all_results.append({
-                            "날짜": date_str,
-                            "제목": item.get('title'),
-                            "주제": item.get('fcpTopics')[0].get('name') if item.get('fcpTopics') else "N/A",
-                            "링크": f"https://ec.europa.eu/commission/presscorner/detail/en/{item.get('reference')}"
-                        })
-                    elif "2024" in date_str:
-                        stop_signal = True
-                        break
-                
-                print(f"📡 {page}페이지 분석 완료... (2025년 데이터 {len(all_results)}건 누적)", flush=True)
-                
-                if stop_signal:
-                    break
-                    
-                page += 1
-                time.sleep(0.5) # 서버 부하 방지용 휴식
-                
+            results = []
+            for row in rows:
+                results.append({
+                    "날짜": row.get('date', {}).get('value'),
+                    "제목": row.get('title', {}).get('value'),
+                    "Cellar_ID": row.get('work', {}).get('value').split('/')[-1]
+                })
+            
+            if results:
+                with open('EU_Cellar_2025.csv', 'w', newline='', encoding='utf-8-sig') as f:
+                    writer = csv.DictWriter(f, fieldnames=["날짜", "제목", "Cellar_ID"])
+                    writer.writeheader()
+                    writer.writerows(results)
+                print(f"🎉 성공! 2025년 법령 {len(results)}건을 창고에서 꺼내왔습니다!", flush=True)
             else:
-                print(f"❌ 접속 실패: {response.status_code}", flush=True)
-                print(f"🔗 시도한 URL: {request_url}", flush=True)
-                break
-                
-        except Exception as e:
-            print(f"❌ 시스템 오류: {e}", flush=True)
-            break
-
-    if all_results:
-        with open('EU_Press_2025.csv', 'w', newline='', encoding='utf-8-sig') as f:
-            writer = csv.DictWriter(f, fieldnames=["날짜", "제목", "주제", "링크"])
-            writer.writeheader()
-            writer.writerows(all_results)
-        print(f"🎉 성공! 2025년 정책 {len(all_results)}건을 CSV로 저장했습니다.", flush=True)
-    else:
-        print("⚠️ 수집된 데이터가 없습니다. URL 구조를 다시 점검해야 합니다.", flush=True)
+                print("⚪ 2025년 데이터가 아직 창고에 반영되지 않았거나 쿼리 조건이 너무 엄격합니다.", flush=True)
+        else:
+            print(f"❌ 접속 실패: {response.status_code}", flush=True)
+            
+    except Exception as e:
+        print(f"❌ 오류 발생: {e}", flush=True)
 
 if __name__ == "__main__":
-    fetch_eu_press_final_2025()
+    fetch_eu_cellar_2025()
