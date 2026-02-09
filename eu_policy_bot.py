@@ -1,76 +1,64 @@
 import requests
 import csv
 import os
+import time
 
-def fetch_eu_cellar_ultimate():
-    sparql_url = "https://publications.europa.eu/webapi/rdf/sparql"
+def fetch_eu_cellar_emergency():
+    # Cellar 데이터를 포함한 웹 API 검색 엔드포인트
+    api_url = "https://data.europa.eu/api/hub/search/search"
     
-    # [전략] 발행일(date_document) 대신 생성일(date_creation)과 수정일(last_modification)을 모두 확인합니다.
-    query = """
-    PREFIX cdm: <http://publications.europa.eu/ontology/cdm#>
-    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-
-    SELECT DISTINCT ?work ?title ?date
-    WHERE {
-      # 1. 생성일 또는 발행일 중 하나라도 있으면 가져옴
-      { ?work cdm:work_date_creation ?date . }
-      UNION
-      { ?work cdm:work_date_document ?date . }
-      
-      ?work cdm:work_has_expression ?expr .
-      ?expr cdm:expression_title ?title .
-      ?expr cdm:expression_uses_language <http://publications.europa.eu/resource/authority/language/ENG> .
-      
-      # 2025년 데이터 필터링
-      FILTER (regex(str(?date), "2025"))
+    # [특급 처방] 복잡한 필터링 문법을 모두 버리고, 가장 단순한 파라미터만 사용합니다.
+    params = {
+        "q": "2025", # 검색어 자체에 연도를 넣습니다.
+        "filters": "catalogue:cellar",
+        "dataScope": "eu",
+        "limit": 50,
+        "page": 0,
+        "sort": "modified-desc" # 수정일 기준 최신순
     }
-    ORDER BY DESC(?date)
-    LIMIT 1000
-    """
 
     file_name = 'EU_Policy_2025_Full.csv'
-    headers = {
-        "Accept": "application/sparql-results+json",
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    print("🕵️ [심층 추적] Cellar의 모든 날짜 기록을 뒤져 2025년 문서를 찾습니다...", flush=True)
+    all_records = []
+    
+    print("🆘 [긴급 모드] SPARQL 대신 웹 API 검색으로 2025년 데이터를 강제 소환합니다...", flush=True)
 
     try:
-        response = requests.get(sparql_url, params={'query': query}, headers=headers, timeout=60)
+        response = requests.get(api_url, params=params, timeout=30)
         
         if response.status_code == 200:
             data = response.json()
-            results = data.get('results', {}).get('bindings', [])
+            results = data.get('result', {}).get('results', [])
             
-            all_records = []
-            for item in results:
-                work_uri = item['work']['value']
-                cellar_id = work_uri.split('/')[-1]
-                title = item['title']['value']
-                date_val = item['date']['value']
+            if results:
+                for item in results:
+                    # 제목 추출
+                    title_dict = item.get('title', {})
+                    title = title_dict.get('en') if isinstance(title_dict, dict) else str(title_dict)
+                    
+                    # 날짜 추출 (issued 또는 modified)
+                    date_val = item.get('issued', item.get('modified', '2025-XX-XX'))
+                    doc_id = item.get('id', '')
+                    link = f"https://op.europa.eu/en/publication-detail/-/publication/{doc_id}"
+                    
+                    all_records.append({
+                        "date": date_val[:10],
+                        "title": title.strip() if title else "No Title",
+                        "link": link
+                    })
                 
-                link = f"https://op.europa.eu/en/publication-detail/-/publication/{cellar_id}"
-                
-                all_records.append({
-                    "date": date_val,
-                    "title": title,
-                    "link": link
-                })
-            
-            if all_records:
+                # CSV 저장
                 with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
                     writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
                     writer.writeheader()
                     writer.writerows(all_records)
-                print(f"🎯 [성공] 드디어 2025년 데이터 {len(all_records)}건을 찾아냈습니다!", flush=True)
+                print(f"🎯 [성공] 드디어 {len(all_records)}건의 데이터를 확보했습니다! {file_name}을 확인하세요.", flush=True)
             else:
-                print("⚠️ 모든 날짜 필드를 뒤졌으나 2025년 기록이 없습니다. DB 인덱싱 지연 가능성이 높습니다.", flush=True)
+                print("⚠️ 웹 API 검색 결과도 0건입니다. 키워드를 '2024'로 바꿔서 서버 생존 확인이 필요합니다.", flush=True)
         else:
-            print(f"❌ 서버 응답 오류: {response.status_code} - {response.text[:100]}", flush=True)
+            print(f"❌ API 접속 실패 ({response.status_code})", flush=True)
 
     except Exception as e:
         print(f"❌ 오류 발생: {e}", flush=True)
 
 if __name__ == "__main__":
-    fetch_eu_cellar_ultimate()
+    fetch_eu_cellar_emergency()
