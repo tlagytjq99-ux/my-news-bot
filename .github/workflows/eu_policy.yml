@@ -1,16 +1,15 @@
-name: EU Policy Data Bot 2025
+name: Sync EU Policy Data
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 매일 자정(UTC)에 자동 실행
-  workflow_dispatch:    # 수동 실행 버튼 활성화
+    - cron: '0 0 * * *' # 매일 자정에 실행
+  workflow_dispatch: # 수동 실행 가능
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -19,23 +18,15 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests beautifulsoup4
+        run: pip install requests
 
-      - name: Run EU Policy Bot
-        run: python eu_policy_bot.py
+      - name: Run collection script
+        run: python collect_eu_data.py
 
-      - name: Commit and Push
+      - name: Commit and push changes
         run: |
-          git config --global user.name "GitHub Action Bot"
-          git config --global user.email "actions@github.com"
-          
-          # 파일이 존재하고, 수정사항이 있을 때만 푸시
-          if [ -f EU_Policy_2025_Full.csv ]; then
-            git add EU_Policy_2025_Full.csv
-            git commit -m "Update EU Policy 2025 [$(date)]" || echo "No changes to commit"
-            git push
-          else
-            echo "No file to add"
-          fi
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add eu_policies_2025.json
+          git commit -m "Update EU Policy Data 2025" || exit 0
+          git push
