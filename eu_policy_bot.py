@@ -1,59 +1,39 @@
 import requests
-import csv
 import os
 
-def fetch_eu_direct_official_api():
-    # EU 간행물처 공식 검색 API (op.europa.eu 직통)
-    # 2025년 발행된(DN=2025*) 영문(LNG=ENG) 문서를 검색합니다.
-    api_url = "https://op.europa.eu/en/web/api/search"
+def download_eu_policy_csv():
+    # [핵심] 2025년 Cellar 간행물 검색 결과의 'CSV 내보내기' 직접 링크입니다.
+    # API가 아니라 완성된 결과 파일을 요청하는 방식이라 에러 확률이 극히 낮습니다.
+    download_url = "https://data.europa.eu/api/hub/search/search?q=2025&filters=catalogue:cellar&limit=1000&format=csv"
     
-    params = {
-        "q": "DN=2025*", # 2025년 발행 번호를 가진 모든 문서
-        "lang": "en",
-        "rows": 100,      # 한 번에 100건 수집
-        "start": 1,
-        "sort": "date_publication_desc" # 발행일 최신순
-    }
-
     file_name = 'EU_Policy_2025_Full.csv'
-    all_records = []
     
-    print("🎯 [직통 통로] EU 간행물처 공식 API에 직접 연결합니다...", flush=True)
+    print(f"📥 [다운로드 시작] 2025년 정책 리스트를 파일로 직접 수령합니다...", flush=True)
 
     try:
-        response = requests.get(api_url, params=params, timeout=30)
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/csv"
+        }
+        
+        response = requests.get(download_url, headers=headers, timeout=60)
         
         if response.status_code == 200:
-            data = response.json()
-            # 공식 API는 'results' 안에 데이터를 담고 있습니다.
-            results = data.get('results', [])
+            # 받아온 내용을 그대로 파일로 저장
+            with open(file_name, 'wb') as f:
+                f.write(response.content)
             
-            if results:
-                for item in results:
-                    title = item.get('title', 'No Title')
-                    date = item.get('date_publication', '2025-XX-XX')
-                    # 문서 고유 ID를 통해 직접 링크 생성
-                    doc_id = item.get('id', '')
-                    link = f"https://op.europa.eu/en/publication-detail/-/publication/{doc_id}"
-                    
-                    all_records.append({
-                        "date": date[:10] if date else "2025-XX-XX",
-                        "title": title.strip(),
-                        "link": link
-                    })
-                
-                with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
-                    writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
-                    writer.writeheader()
-                    writer.writerows(all_records)
-                print(f"✅ [성공] 공식 루트를 통해 {len(all_records)}건을 확보했습니다!", flush=True)
+            # 파일 크기 확인 (데이터가 있는지 검증)
+            file_size = os.path.getsize(file_name)
+            if file_size > 500: # 헤더 외에 데이터가 더 있다면 성공
+                print(f"✅ [성공] {file_name} 저장 완료! (크기: {file_size} bytes)", flush=True)
             else:
-                print("⚠️ 공식 API에서도 결과가 0건입니다. 쿼리 키워드를 '2024'로 테스트해봅니다.", flush=True)
+                print("⚠️ 파일은 생성되었으나 내용이 비어있을 수 있습니다. 확인이 필요합니다.", flush=True)
         else:
-            print(f"❌ 접속 오류: {response.status_code}", flush=True)
+            print(f"❌ 다운로드 실패 (상태 코드: {response.status_code})", flush=True)
 
     except Exception as e:
-        print(f"❌ 시스템 오류: {e}", flush=True)
+        print(f"❌ 오류 발생: {e}", flush=True)
 
 if __name__ == "__main__":
-    fetch_eu_direct_official_api()
+    download_eu_policy_csv()
