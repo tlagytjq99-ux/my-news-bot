@@ -21,6 +21,7 @@ jobs:
         run: |
           pip install requests beautifulsoup4 pandas
 
+      # ... 이전 설정 동일 ...
       - name: Run Crawler
         run: python japan_digital_bot.py
 
@@ -28,6 +29,12 @@ jobs:
         run: |
           git config --global user.name "PolicyBot"
           git config --global user.email "bot@github.com"
-          git add Japan_Digital_Policy_2025.csv
-          git commit -m "Update: 2025 Japan Policy Data $(date +'%Y-%m-%d')" || exit 0
-          git push
+          # 파일이 존재할 때만 git add 실행
+          if [ -f Japan_Digital_Policy_2025.csv ]; then
+            git add Japan_Digital_Policy_2025.csv
+            git commit -m "Update: 2025 Japan Policy Data $(date +'%Y-%m-%d')" || echo "No changes to commit"
+            git push
+          else
+            echo "파일이 생성되지 않아 중단합니다."
+            exit 1
+          fi
