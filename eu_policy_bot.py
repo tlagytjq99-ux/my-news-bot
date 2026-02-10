@@ -1,77 +1,60 @@
 import requests
+from bs4 import BeautifulSoup
 import csv
-import re
 
-def fetch_eu_policy_with_manual():
-    # 1. 목록 스캔을 위한 타겟 페이지
-    list_url = "https://op.europa.eu/en/web/general-publications/publications"
-    file_name = 'EU_Policy_Advanced_Report.csv'
-    
-    # 대표님 매뉴얼의 핵심: 언어와 형식을 지정하는 헤더
-    # 상세 메타데이터(RDF/XML)를 요청하여 더 깊은 정보를 얻습니다.
-    api_headers = {
-        'Accept': 'application/rdf+xml', 
-        'Accept-Language': 'eng'
+def crawl_eu_2025_news():
+    # 대표님이 주신 2025년 필터링 URL
+    target_url = "https://european-union.europa.eu/news-and-events/news-and-stories_en?f%5B0%5D=oe_news_publication_date%3Abt%7C2025-01-01T02%3A12%3A07%2B01%3A00%7C2025-12-31T02%3A12%3A07%2B01%3A00"
+    file_name = 'EU_News_2025_List.csv'
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
-    
-    print("🚀 [1단계] 최신 목록에서 고유 식별자(UUID)를 스캔합니다...", flush=True)
+
+    print("🚀 [2025 뉴스 사냥] 데이터를 수집 중입니다...", flush=True)
 
     try:
-        # 웹 페이지에서 UUID(Cellar ID) 패턴을 찾아냅니다.
-        response = requests.get(list_url, timeout=30)
-        # UUID 형식: 8자리-4자리-4자리-4자리-12자리 (예: b84f49cd-...)
-        uuid_patterns = re.findall(r'([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})', response.text)
-        uuids = list(set(uuid_patterns)) # 중복 제거
+        response = requests.get(target_url, headers=headers, timeout=30)
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-        if not uuids:
-            print("⚠️ UUID를 찾지 못했습니다. 목록 페이지 구조를 확인하세요.", flush=True)
-            return
+        # 기사 아이템들을 찾습니다 (보통 특정 클래스를 가진 div 내에 존재)
+        articles = soup.select('div.views-row') # 페이지 구조에 따른 선택자
 
-        print(f"✅ {len(uuids)}개의 잠재적 문서를 발견했습니다. 상세 API 요청을 시작합니다.", flush=True)
-
-        final_data = []
-        for uuid in uuids[:10]: # 시간 관계상 상위 10개만 정밀 분석
-            # 2. 대표님이 찾으신 매뉴얼의 REST API URL 구성
-            # http://publications.europa.eu/resource/cellar/{id}
-            resource_url = f"http://publications.europa.eu/resource/cellar/{uuid}"
+        news_list = []
+        for article in articles:
+            # 제목과 링크 추출
+            title_tag = article.select_one('h3 a') or article.select_one('h2 a')
+            if not title_tag: continue
             
-            try:
-                # 매뉴얼 방식대로 요청 (-L 옵션은 allow_redirects=True)
-                res = requests.get(resource_url, headers=api_headers, allow_redirects=True, timeout=10)
-                
-                # PDF 링크는 Accept를 application/pdf로 바꿔서 얻을 수 있는 최종 URL입니다.
-                # 실제 파일 경로를 미리 생성해둡니다.
-                pdf_link = f"http://publications.europa.eu/resource/cellar/{uuid}?language=eng&format=pdf"
-                
-                # 문서 제목을 추출하기 위한 간단한 로직 (실제로는 XML 파싱이 들어가나 여기선 예시로 구성)
-                # 우선 목록에서 가져온 ID를 기반으로 리스트업합니다.
-                final_data.append({
-                    "UUID": uuid,
-                    "API_Endpoint": resource_url,
-                    "PDF_Download": pdf_link,
-                    "Status": "Verified" if res.status_code == 200 else "Check Required"
-                })
-                print(f"🔎 ID {uuid[:8]}... 분석 완료", flush=True)
+            title = title_tag.get_text(strip=True)
+            link = title_tag['href']
+            if not link.startswith('http'):
+                link = "https://european-union.europa.eu" + link
 
-            except:
-                continue
+            # 날짜 추출
+            date_tag = article.select_one('span.oe-news-publication-date') or article.select_one('time')
+            date = date_tag.get_text(strip=True) if date_tag else "2025"
 
-        # 3. 결과 저장
-        if final_data:
+            news_list.append({
+                "date": date,
+                "title": title,
+                "link": link
+            })
+
+        if news_list:
             with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
-                writer = csv.DictWriter(f, fieldnames=["UUID", "API_Endpoint", "PDF_Download", "Status"])
+                writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
                 writer.writeheader()
-                writer.writerows(final_data)
+                writer.writerows(news_list)
             
-            print("\n" + "="*50)
-            print(f"📊 수집 결과 보고")
-            print(f"- 생성 파일: {file_name}")
-            print(f"- 수집된 상세 링크: {len(final_data)}개")
-            print(f"- 적용 매뉴얼: RESTful 인터페이스 (cellar/{uuid})")
-            print("="*50)
-        
+            print(f"✅ 성공! 2025년 주요 뉴스 {len(news_list)}건을 수집했습니다.")
+            print(f"📂 파일명: {file_name}")
+            # 샘플 출력
+            print(f"\n📌 최신 뉴스 예시: {news_list[0]['title']}")
+        else:
+            print("⚠️ 데이터를 찾지 못했습니다. 페이지 구조를 다시 분석해야 합니다.")
+
     except Exception as e:
-        print(f"❌ 시스템 오류: {e}", flush=True)
+        print(f"❌ 오류 발생: {e}")
 
 if __name__ == "__main__":
-    fetch_eu_policy_with_manual()
+    crawl_eu_2025_news()
