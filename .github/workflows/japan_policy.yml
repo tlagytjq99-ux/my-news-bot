@@ -8,6 +8,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 쓰기 권한을 명시적으로 부여합니다.
+    permissions:
+      contents: write
+      
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -29,12 +33,25 @@ jobs:
         run: |
           git config --global user.name "PolicyBot"
           git config --global user.email "bot@github.com"
-          # 파일이 존재할 때만 git add 실행
-          if [ -f Japan_Digital_Policy_2025.csv ]; then
-            git add Japan_Digital_Policy_2025.csv
+          
+          # 파이썬 코드에서 생성한 정확한 파일명을 체크합니다.
+          # 만약 파일명이 달랐다면 이 부분이 핵심 해결책입니다.
+          FILENAME="Japan_Digital_2025_Full_Archive.csv"
+          
+          if [ -f "$FILENAME" ]; then
+            git add "$FILENAME"
             git commit -m "Update: 2025 Japan Policy Data $(date +'%Y-%m-%d')" || echo "No changes to commit"
             git push
           else
-            echo "파일이 생성되지 않아 중단합니다."
+            echo "파일($FILENAME)이 생성되지 않아 중단합니다."
+            # 디버깅을 위해 현재 폴더 파일 목록 출력
+            ls -al
             exit 1
           fi
+
+      # 추가 보너스: 저장소에 올리는 것과 별개로 브라우저에서 바로 다운로드할 수 있게 만듭니다.
+      - name: Upload artifact for manual download
+        uses: actions/upload-artifact@v4
+        with:
+          name: Japan-Digital-2025-CSV
+          path: Japan_Digital_2025_Full_Archive.csv
