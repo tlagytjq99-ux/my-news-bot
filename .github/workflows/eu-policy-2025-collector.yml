@@ -2,18 +2,18 @@ name: EU-Policy-Final-Fix
 
 on:
   schedule:
-    - cron: '0 10 * * *'
-  workflow_dispatch: 
+    - cron: '0 10 * * *' # 매일 오전 10시 자동 실행
+  workflow_dispatch:      # 수동 실행 버튼
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # 최신 버전으로 유지
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -24,6 +24,14 @@ jobs:
       - name: Run Collector
         run: python eu_policy_bot.py
 
+      # 1. 파일을 깃허브 상단 'Artifacts' 메뉴에서 즉시 다운로드 가능하게 함
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EU-Policy-2025-Report
+          path: EU_Policy_2025_Full.csv
+
+      # 2. 파일을 레포지토리에 자동으로 커밋하고 푸시함
       - name: Push Results
         run: |
           git config --global user.name "EU-Bot"
