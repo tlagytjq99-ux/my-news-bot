@@ -1,64 +1,52 @@
 import requests
+from bs4 import BeautifulSoup
 import csv
 
-def conquer_eu_2025_real_news():
-    # EU 뉴스 서버가 실제로 데이터를 내뿜는 JSON 엔드포인트입니다.
-    # 화면을 긁는 게 아니라 데이터를 직접 가져옵니다.
-    api_url = "https://european-union.europa.eu/api/v1/news-stories"
+def fetch_2025_news_perfect():
+    # 2025년 필터링된 주소
+    url = "https://european-union.europa.eu/news-and-events/news-and-stories_en?f%5B0%5D=oe_news_publication_date%3Abt%7C2025-01-01T02%3A12%3A07%2B01%3A00%7C2025-12-31T02%3A12%3A07%2B01%3A00"
     
-    # 2025년 필터 매개변수
-    params = {
-        "_format": "json",
-        "language": "en",
-        "range": "2025-01-01|2025-12-31", # 2025년 데이터 지정
-        "limit": 20,
-        "offset": 0
-    }
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     
-    file_name = 'EU_2025_REAL_NEWS.csv'
-    headers = {'User-Agent': 'Mozilla/5.0'}
-
-    print("🎯 [진검승부] 고정 메뉴가 아닌 2025년 실시간 뉴스 데이터를 강제 추출합니다...", flush=True)
+    print("🎯 [정밀 타격] 메뉴/푸터 무시하고 '뉴스 알맹이'만 도려냅니다...", flush=True)
 
     try:
-        response = requests.get(api_url, params=params, headers=headers, timeout=30)
-        
-        # 만약 JSON API가 막혔을 경우를 대비한 대체 로직
-        if response.status_code != 200:
-            print("⚠️ API 접근 제한. 고정 요소 제외 검색 모드로 전환합니다.")
-            return
+        res = requests.get(url, headers=headers, timeout=30)
+        soup = BeautifulSoup(res.text, 'html.parser')
 
-        data = response.json()
-        articles = data.get('items', [])
+        # [핵심] EU 뉴스 사이트에서 기사가 들어있는 구역만 딱 집어냅니다.
+        # 이 구역 밖의 'Call us', 'Mission' 등은 모두 무시됩니다.
+        news_items = soup.find_all('div', class_='ecl-content-block')
 
-        news_results = []
-        for item in articles:
-            title = item.get('title', '').strip()
-            link = item.get('url', '')
-            date = item.get('publication_date', '2025')
+        results = []
+        for item in news_items:
+            title_tag = item.find('h2') or item.find('h3')
+            link_tag = item.find('a')
             
-            if not link.startswith('http'):
-                link = "https://european-union.europa.eu" + link
+            if title_tag and link_tag:
+                title = title_tag.get_text(strip=True)
+                link = link_tag['href']
+                if not link.startswith('http'):
+                    link = "https://european-union.europa.eu" + link
+                
+                # 'Call us' 같은 메뉴성 텍스트가 포함된 경우 걸러내기
+                if any(x in title.lower() for x in ['call us', 'contact', 'mission', 'about']):
+                    continue
+                    
+                results.append({"title": title, "link": link})
 
-            news_results.append({
-                "date": date,
-                "title": title,
-                "link": link
-            })
-
-        if news_results:
-            with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
-                writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
+        if results:
+            with open('EU_2025_NEWS_CLEAN.csv', 'w', newline='', encoding='utf-8-sig') as f:
+                writer = csv.DictWriter(f, fieldnames=["title", "link"])
                 writer.writeheader()
-                writer.writerows(news_results)
-            
-            print(f"✅ 드디어 성공! 2025년 진짜 뉴스 {len(news_results)}건 확보.")
-            print(f"📌 샘플: {news_results[0]['title']}")
+                writer.writerows(results)
+            print(f"✅ 성공! 진짜 2025년 뉴스 {len(results)}건 확보!")
+            print(f"📌 첫 기사: {results[0]['title']}")
         else:
-            print("⚠️ 해당 기간에 등록된 뉴스가 아직 데이터베이스에 없습니다.")
+            print("⚠️ 뉴스 구역을 찾는 데 실패했습니다. EU가 클래스명을 숨겼을 수 있습니다.")
 
     except Exception as e:
-        print(f"❌ 오류 발생: {e}")
+        print(f"❌ 오류: {e}")
 
 if __name__ == "__main__":
-    conquer_eu_2025_real_news()
+    fetch_2025_news_perfect()
