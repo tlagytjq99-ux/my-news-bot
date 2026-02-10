@@ -23,9 +23,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4 playwright
+          pip install playwright beautifulsoup4 requests
           playwright install chromium
-          
       - name: Run Crawler
         run: python japan_digital_bot.py
 
