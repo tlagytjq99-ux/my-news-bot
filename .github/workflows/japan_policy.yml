@@ -19,9 +19,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install playwright beautifulsoup4 pandas
-          playwright install chromium # 브라우저 엔진 설치
-
+          pip install requests beautifulsoup4 playwright
+          playwright install chromium
+          
       - name: Run Crawler
         run: python japan_digital_bot.py
 
