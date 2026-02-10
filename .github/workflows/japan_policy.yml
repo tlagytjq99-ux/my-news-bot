@@ -19,7 +19,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4 pandas
+          pip install requests beautifulsoup4 pandas feedparser
 
       # ... 이전 설정 동일 ...
       - name: Run Crawler
