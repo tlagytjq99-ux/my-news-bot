@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import csv
 import time
 
-def crawl_digital_2025_ultimate_archive():
+def crawl_digital_2025_no_limit():
     start_page = 21
     end_page = 188
     file_name = 'Japan_Digital_2025_Full_Archive.csv'
@@ -12,75 +12,75 @@ def crawl_digital_2025_ultimate_archive():
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
     }
     
+    unique_links = set() # 중복 체크용
     all_data = []
 
-    print(f"🚀 [전수 조사] Page {start_page} ~ {end_page}의 모든 2025년 데이터를 추출합니다...")
+    print(f"🚀 [한계 돌파] {start_page} ~ {end_page} 페이지의 모든 데이터를 샅샅이 뒤집니다.")
 
     for page in range(start_page, end_page + 1):
         url = f"{base_url}{page}"
-        print(f"📡 {page}/{end_page} 페이지 정밀 스캔 중... (현재 {len(all_data)}건 확보)", end='\r')
+        print(f"📡 {page}/{end_page} 페이지 분석 중... (현재 누적 {len(all_data)}건)", end='\r')
         
         try:
             res = requests.get(url, headers=headers, timeout=20)
             res.encoding = 'utf-8'
             soup = BeautifulSoup(res.text, 'html.parser')
             
-            # 특정 클래스에 얽매이지 않고, 날짜(time 태그)가 포함된 모든 구역을 타겟팅합니다.
-            # 1. 모든 time 태그를 찾아서 그 부모 요소들로부터 정보를 추출
-            time_tags = soup.find_all('time')
-            
-            for time_tag in time_tags:
-                date_text = time_tag.get_text(strip=True)
+            # 디지털청 뉴스 리스트의 핵심은 <a> 태그 안에 <span>이나 <time>이 섞여 있는 구조입니다.
+            # 모든 <a> 태그를 전수 조사합니다.
+            for a in soup.find_all('a', href=True):
+                href = a['href']
                 
-                # 2025년 데이터인지 검증
-                if "2025" in date_text:
-                    # 해당 날짜 근처에 있는 가장 가까운 링크(a 태그)를 찾습니다.
-                    # 부모 요소를 타고 올라가며 링크를 탐색합니다.
-                    parent = time_tag.parent
-                    link_tag = None
+                # 뉴스나 보도자료 주소 패턴만 타겟팅
+                if '/news/' in href or '/press/' in href:
+                    full_url = "https://www.digital.go.jp" + href if href.startswith('/') else href
                     
-                    # 최대 5단계 부모까지 올라가며 링크 탐색
-                    for _ in range(5):
-                        if parent:
-                            link_tag = parent.find('a', href=True)
-                            if link_tag: break
-                            parent = parent.parent
+                    # 이미 수집한 링크면 패스
+                    if full_url in unique_links:
+                        continue
+                        
+                    # 제목 추출 (내부의 텍스트를 모두 합침)
+                    title = a.get_text(separator=" ", strip=True)
                     
-                    if link_tag:
-                        title = link_tag.get_text(strip=True)
-                        href = link_tag['href']
+                    # 날짜 추출 시도: 해당 링크 부모나 자식 요소에서 '2025'가 있는지 확인
+                    # <a> 태그 내부 혹은 근처 텍스트에서 날짜 패턴 탐색
+                    context_text = a.parent.get_text() if a.parent else title
+                    
+                    if "2025" in context_text or "令和7" in context_text:
+                        # 너무 짧거나 메뉴 항목인 경우 제외
+                        if len(title) < 10: continue
                         
-                        # 메뉴 링크나 너무 짧은 제목 제외
-                        if len(title) < 10 or href.startswith('#'): continue
+                        # 날짜 텍스트만 깔끔하게 정제 (예: 2025.02.10)
+                        date_match = re.search(r'2025[-./]\d{1,2}[-./]\d{1,2}', context_text)
+                        date_val = date_match.group() if date_match else "2025-Policy"
                         
-                        full_url = "https://www.digital.go.jp" + href if href.startswith('/') else href
+                        unique_links.add(full_url)
                         all_data.append({
-                            "date": date_text[:10],
+                            "date": date_val,
                             "title": title,
                             "link": full_url
                         })
 
-            if page % 20 == 0:
-                time.sleep(1) # 과부하 방지
+            if page % 30 == 0:
+                time.sleep(1)
 
         except Exception as e:
-            print(f"\n❌ {page}페이지 스캔 중 오류: {e}")
+            print(f"\n❌ {page}페이지 오류: {e}")
             continue
 
-    # 데이터 정제 및 저장
+    # 데이터 저장
     if all_data:
-        # 링크 중복 제거
-        unique_data = list({v['link']: v for v in all_data}.values())
         # 날짜순 정렬
-        unique_data.sort(key=lambda x: x['date'], reverse=True)
+        all_data.sort(key=lambda x: x['date'], reverse=True)
         
         with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
             writer.writeheader()
-            writer.writerows(unique_data)
-        print(f"\n\n✅ 수집 완료! {len(unique_data)}건의 데이터를 확보했습니다.")
+            writer.writerows(all_data)
+        print(f"\n\n✅ [임무 완수] 총 {len(all_data)}건의 데이터를 확보했습니다!")
     else:
-        print("\n⚠️ 데이터를 수집하지 못했습니다.")
+        print("\n⚠️ 데이터 수집 실패")
 
 if __name__ == "__main__":
-    crawl_digital_2025_ultimate_archive()
+    import re # re 모듈 추가
+    crawl_digital_2025_no_limit()
