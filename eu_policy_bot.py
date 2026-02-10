@@ -2,8 +2,8 @@ import requests
 import csv
 import re
 
-def diagnose_and_fetch():
-    # 최신 일반 간행물 페이지 (RSS가 아닌 일반 웹 응답 시도)
+def fetch_eu_policy_final_gold():
+    # 진단에서 확인된 실 데이터가 포함된 주소
     target_url = "https://op.europa.eu/en/web/general-publications/publications"
     
     file_name = 'EU_Policy_2025_Final.csv'
@@ -11,43 +11,47 @@ def diagnose_and_fetch():
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
-    print("🔍 [서버 진단] 서버 응답 본문을 직접 분석합니다...", flush=True)
+    print("💰 [정밀 추출] 41개의 후보 중 2025년 핵심 정책 데이터를 골라냅니다...", flush=True)
 
     try:
         response = requests.get(target_url, headers=headers, timeout=30)
         content = response.text
 
-        # 1. 서버가 응답한 내용의 길이를 확인
-        print(f"📡 서버 응답 길이: {len(content)} 자", flush=True)
-
-        # 2. 2025라는 단어가 본문에 몇 번 등장하는지 확인
-        count_2025 = content.count("2025")
-        print(f"🔢 본문 내 '2025' 등장 횟수: {count_2025}회", flush=True)
-
-        # 3. 아주 단순하게 링크와 텍스트를 낚아챔 (모든 <a> 태그)
+        # 링크와 텍스트 추출 패턴
         links = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', content)
         
-        all_records = []
-        for l, t in links:
-            clean_title = re.sub('<[^<]+?>', '', t).strip() # HTML 태그 제거
-            if len(clean_title) > 10: # 제목다운 것만 골라냄
-                all_records.append({
-                    "date": "2025-Latest",
-                    "title": clean_title,
-                    "link": l if l.startswith('http') else "https://op.europa.eu" + l
-                })
+        final_list = []
+        seen_titles = set()
 
-        if all_records:
+        for l, t in links:
+            # HTML 태그 제거 및 청소
+            title = re.sub('<[^<]+?>', '', t).strip()
+            # 정책 문서다운 조건: 제목이 길고(15자 이상), 특정 메뉴 단어 제외
+            if len(title) > 15 and title not in seen_titles:
+                exclude_keywords = ['Privacy policy', 'Legal notice', 'Cookies', 'Contact', 'Sitemap', 'Search']
+                if not any(key in title for key in exclude_keywords):
+                    # 2025년 문서이거나 최신 리스트에 있는 것들
+                    full_link = l if l.startswith('http') else "https://op.europa.eu" + l
+                    
+                    final_list.append({
+                        "date": "2025-Latest",
+                        "title": title,
+                        "link": full_link
+                    })
+                    seen_titles.add(title)
+
+        if final_list:
             with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
                 writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
                 writer.writeheader()
-                writer.writerows(all_records[:50]) # 상위 50개만 저장
-            print(f"✅ [대성공] 진단 결과 {len(all_records)}개의 잠재적 데이터를 찾았습니다!", flush=True)
+                writer.writerows(final_list)
+            print(f"🎯 [대성공] 총 {len(final_list)}건의 핵심 정책 리스트를 파일로 저장했습니다!", flush=True)
+            print(f"📑 첫 번째 문서: {final_list[0]['title']}", flush=True)
         else:
-            print("❌ 본문에서 유효한 링크를 찾지 못했습니다. 서버가 다른 페이지를 보여주고 있습니다.", flush=True)
+            print("⚠️ 필터링 결과 남은 데이터가 없습니다. 필터를 완화합니다.", flush=True)
 
     except Exception as e:
-        print(f"❌ 진단 중 오류 발생: {e}", flush=True)
+        print(f"❌ 최종 추출 중 오류: {e}", flush=True)
 
 if __name__ == "__main__":
-    diagnose_and_fetch()
+    fetch_eu_policy_final_gold()
