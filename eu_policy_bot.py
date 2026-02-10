@@ -1,60 +1,69 @@
 import requests
 from bs4 import BeautifulSoup
 import csv
+import re
 
-def crawl_eu_2025_news():
-    # 대표님이 주신 2025년 필터링 URL
+def crawl_eu_2025_news_v2():
+    # 2025년 필터가 적용된 URL
     target_url = "https://european-union.europa.eu/news-and-events/news-and-stories_en?f%5B0%5D=oe_news_publication_date%3Abt%7C2025-01-01T02%3A12%3A07%2B01%3A00%7C2025-12-31T02%3A12%3A07%2B01%3A00"
-    file_name = 'EU_News_2025_List.csv'
+    file_name = 'EU_News_2025_Final.csv'
+    
+    # 브라우저인 척 속이기 위한 강력한 헤더
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9'
     }
 
-    print("🚀 [2025 뉴스 사냥] 데이터를 수집 중입니다...", flush=True)
+    print("🚀 [2025 정밀 사냥] 이번에는 놓치지 않습니다. 스캔 시작...", flush=True)
 
     try:
         response = requests.get(target_url, headers=headers, timeout=30)
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # 기사 아이템들을 찾습니다 (보통 특정 클래스를 가진 div 내에 존재)
-        articles = soup.select('div.views-row') # 페이지 구조에 따른 선택자
+        # 1. 모든 링크 중에서 '/news/'가 포함된 뉴스 기사 링크만 필터링
+        # EU 뉴스는 주소에 반드시 '/news/'가 들어갑니다.
+        news_links = soup.find_all('a', href=re.compile(r'/news/'))
+        
+        final_news = []
+        seen_links = set()
 
-        news_list = []
-        for article in articles:
-            # 제목과 링크 추출
-            title_tag = article.select_one('h3 a') or article.select_one('h2 a')
-            if not title_tag: continue
+        for link_tag in news_links:
+            url = link_tag['href']
+            # 절대 경로로 변환
+            full_url = url if url.startswith('http') else "https://european-union.europa.eu" + url
             
-            title = title_tag.get_text(strip=True)
-            link = title_tag['href']
-            if not link.startswith('http'):
-                link = "https://european-union.europa.eu" + link
+            # 제목 추출 (이미지 링크 등은 제외하기 위해 텍스트가 있는 경우만)
+            title = link_tag.get_text(strip=True)
+            
+            # 중복 제거 및 짧은 제목(더보기 등) 필터링
+            if full_url not in seen_links and len(title) > 20:
+                final_news.append({
+                    "date": "2025",
+                    "title": title,
+                    "link": full_url
+                })
+                seen_links.add(full_url)
 
-            # 날짜 추출
-            date_tag = article.select_one('span.oe-news-publication-date') or article.select_one('time')
-            date = date_tag.get_text(strip=True) if date_tag else "2025"
-
-            news_list.append({
-                "date": date,
-                "title": title,
-                "link": link
-            })
-
-        if news_list:
+        if final_news:
             with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
                 writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
                 writer.writeheader()
-                writer.writerows(news_list)
+                writer.writerows(final_news)
             
-            print(f"✅ 성공! 2025년 주요 뉴스 {len(news_list)}건을 수집했습니다.")
-            print(f"📂 파일명: {file_name}")
-            # 샘플 출력
-            print(f"\n📌 최신 뉴스 예시: {news_list[0]['title']}")
+            print("\n" + "🏆"*20)
+            print(f"2025년 데이터 정복 성공! 총 {len(final_news)}건 확보")
+            print(f"저장된 파일: {file_name}")
+            print("🏆"*20)
+            for i, item in enumerate(final_news[:5], 1):
+                print(f"{i}. {item['title']}")
+                print(f"   🔗 {item['link']}\n")
         else:
-            print("⚠️ 데이터를 찾지 못했습니다. 페이지 구조를 다시 분석해야 합니다.")
+            # 실패 시 소스 코드 일부를 출력하여 제가 분석할 수 있게 합니다.
+            print("⚠️ 여전히 데이터를 찾지 못했습니다. 소스 분석을 위해 일부 내용을 확인합니다.")
+            print(f"검색된 총 링크 수: {len(soup.find_all('a'))}")
 
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
 
 if __name__ == "__main__":
-    crawl_eu_2025_news()
+    crawl_eu_2025_news_v2()
