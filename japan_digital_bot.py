@@ -3,83 +3,78 @@ from bs4 import BeautifulSoup
 import csv
 import time
 
-def crawl_digital_agency_2025_all():
+def crawl_digital_2025_fixed_range():
+    # 대표님이 확인해주신 2025년 구간
+    start_page = 21
+    end_page = 188
+    
+    file_name = 'Japan_Digital_2025_Full_Archive.csv'
     base_url = "https://www.digital.go.jp/news?page="
-    file_name = 'Japan_Digital_All_2025.csv'
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
     }
     
-    all_2025_data = []
-    page = 0
-    keep_scanning = True
+    all_data = []
 
-    print("🚀 [2025 전수 조사] 디지털청 아카이브 정밀 스캔을 시작합니다...")
+    print(f"🚀 [정밀 타격] Page {start_page}부터 {end_page}까지 2025년 데이터를 수집합니다...")
 
-    while keep_scanning:
+    for page in range(start_page, end_page + 1):
         url = f"{base_url}{page}"
-        print(f"📄 현재 {page}페이지 스캔 중... ({url})")
+        print(f"📡 스캔 중: {page}/{end_page} 페이지...", end='\r')
         
         try:
             res = requests.get(url, headers=headers, timeout=20)
             res.encoding = 'utf-8'
             soup = BeautifulSoup(res.text, 'html.parser')
             
-            # 기사 리스트 아이템 추출 (ecl-card 클래스 혹은 article 태그)
-            articles = soup.find_all(['article', 'div'], class_=lambda x: x and 'card' in x) or soup.find_all('li')
+            # 디지털청의 뉴스 리스트 아이템 (ecl-card 클래스 기반)
+            articles = soup.select('div.ecl-card') or soup.select('article')
             
+            # 만약 선택자가 안 잡힐 경우를 대비한 <a> 태그 직접 추적
             if not articles:
-                print("🏁 더 이상 데이터가 없습니다.")
-                break
+                # 링크와 날짜를 포함하는 가장 가까운 부모 요소를 찾음
+                articles = soup.find_all('li') 
 
-            page_found_2025 = False
             for item in articles:
                 link_tag = item.find('a')
                 date_tag = item.find('time')
                 
                 if link_tag and date_tag:
                     title = link_tag.get_text(strip=True)
-                    date_text = date_tag.get_text(strip=True)
+                    date = date_tag.get('datetime') or date_tag.get_text(strip=True)
                     href = link_tag['href']
                     
-                    # 2025년 데이터인지 확인 (연도 혹은 연호 令和7年)
-                    if "2025" in date_text or "令和7" in date_text:
-                        all_2025_data.append({
-                            "date": date_text,
+                    # 2025년 데이터인지 한 번 더 검증 (안전장치)
+                    if "2025" in date or "2025" in title:
+                        all_data.append({
+                            "date": date[:10],
                             "title": title,
                             "link": "https://www.digital.go.jp" + href if href.startswith('/') else href
                         })
-                        page_found_2025 = True
-                        page_has_2025_data = True
-                    
-                    # 2024년 데이터가 나오기 시작하면 중단
-                    elif "2024" in date_text or "令和6" in date_text:
-                        print("🛑 2024년 데이터 구간에 진입했습니다. 스캔을 종료합니다.")
-                        keep_scanning = False
-                        break
-            
-            # 현재 페이지에 2025년 데이터가 하나도 없고, 이미 2026년 구간을 지났다면 종료 안전장치
-            if not page_found_2025 and page > 50: # 안전을 위해 50페이지까지는 탐색
-                keep_scanning = False
 
-            page += 1
-            time.sleep(1) # 서버 부하 방지 매너 타임
+            # 서버 부하를 고려해 0.3초씩 휴식
+            if page % 10 == 0:
+                time.sleep(1)
+                print(f"\n✨ {page}페이지까지 누적 {len(all_data)}건 확보...")
 
         except Exception as e:
-            print(f"❌ 오류 발생: {e}")
-            break
+            print(f"\n❌ {page}페이지 오류 발생: {e}")
+            continue
 
-    # 데이터 저장
-    if all_2025_data:
-        # 중복 제거
-        unique_data = list({v['link']: v for v in all_2025_data}.values())
+    # 데이터 저장 (중복 제거 포함)
+    if all_data:
+        unique_data = list({v['link']: v for v in all_data}.values())
+        # 날짜순 정렬
+        unique_data.sort(key=lambda x: x['date'], reverse=True)
+        
         with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
             writer.writeheader()
             writer.writerows(unique_data)
-        print(f"✅ 수집 완료! 총 {len(unique_data)}건의 2025년 자료를 저장했습니다.")
+        print(f"\n\n✅ 수집 완료! 총 {len(unique_data)}건의 2025년 정책 자료를 저장했습니다.")
+        print(f"📂 파일명: {file_name}")
     else:
-        print("⚠️ 2025년 데이터를 찾지 못했습니다.")
+        print("\n⚠️ 데이터를 찾지 못했습니다. 선택자(Selector)를 다시 점검해야 합니다.")
 
 if __name__ == "__main__":
-    crawl_digital_agency_2025_all()
+    crawl_digital_2025_fixed_range()
