@@ -1,41 +1,46 @@
 import requests
 import re
 import csv
+import urllib3
 
-def crawl_digital_agency_proxy():
+# SSL 경고 메시지 무시
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def crawl_digital_agency_final_attempt():
     file_name = 'Japan_Digital_Policy_2025.csv'
-    
-    # 디지털청 URL을 구글 번역기 프록시 주소로 변환 (차단 우회용)
-    proxy_url = "https://www.digital-go-jp.translate.goog/press?category=1&_x_tr_sl=ja&_x_tr_tl=ko"
+    # 원본 URL로 복귀하되, SSL 검증을 끕니다.
+    url = "https://www.digital.go.jp/press?category=1"
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ja-JP,ja;q=0.9,ko-KR;q=0.8,ko;q=0.7,en-US;q=0.6,en;q=0.5',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
     }
 
-    print(f"🚀 [프록시 우회 모드] 구글 서버를 통해 디지털청에 접속합니다...")
+    print(f"🚀 [최종 보정 모드] SSL 검증을 우회하여 {url}에 접속합니다...")
 
     try:
-        # 구글 프록시를 통해 HTML 가져오기
-        response = requests.get(proxy_url, headers=headers, timeout=30)
+        # verify=False로 SSL 인증서 에러를 강제로 통과합니다.
+        response = requests.get(url, headers=headers, timeout=30, verify=False)
         html_content = response.text
         
-        # 정규표현식으로 링크와 제목 추출
-        # 구글 프록시를 타면 URL 구조가 살짝 변하므로 범용 패턴 사용
-        pattern = r'href="([^"]*digital-go-jp\.translate\.goog/press/[^"]*)"[^>]*>(.*?)</a>'
+        # 정규표현식: /press/ 뒤에 영문/숫자/대시가 붙은 모든 링크 추출
+        # <a ... href="/press/xxxx"> 제목 </a> 형태 타겟팅
+        pattern = r'href="(/press/[^"]+)"[^>]*>(.*?)</a>'
         matches = re.findall(pattern, html_content)
 
         policy_results = []
         for link, title in matches:
             clean_title = re.sub(r'<[^>]+>', '', title).strip()
-            if len(clean_title) < 10: continue
-            
-            # 원본 주소로 복원
-            original_link = link.split('?')[0].replace('.translate.goog', '').replace('-', '.')
+            # 메뉴나 너무 짧은 텍스트 필터링
+            if len(clean_title) < 10 or "一覧" in clean_title: continue
             
             policy_results.append({
                 "date": "2025/2026",
                 "title": clean_title,
-                "link": original_link
+                "link": "https://www.digital.go.jp" + link if link.startswith('/') else link
             })
 
         if policy_results:
@@ -44,17 +49,17 @@ def crawl_digital_agency_proxy():
                 writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
                 writer.writeheader()
                 writer.writerows(unique_data)
-            print(f"✅ 드디어 뚫었습니다! {len(unique_data)}건 수집 성공.")
+            print(f"✅ 드디어 성공! {len(unique_data)}건의 데이터를 확보했습니다.")
         else:
-            print("⚠️ 프록시 우회도 실패했습니다. 최종 수단인 '가상 브라우저'로 넘어가야 합니다.")
+            print("⚠️ 데이터를 찾지 못했습니다. 사이트 구조가 정적이지 않을 수 있습니다.")
             # 빈 파일 생성
             with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
                 f.write("date,title,link\n")
 
     except Exception as e:
-        print(f"❌ 오류 발생: {e}")
+        print(f"❌ 치명적 오류: {e}")
         with open(file_name, 'w', encoding='utf-8-sig') as f:
             f.write("date,title,link\n")
 
 if __name__ == "__main__":
-    crawl_digital_agency_proxy()
+    crawl_digital_agency_final_attempt()
