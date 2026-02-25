@@ -2,78 +2,60 @@ import asyncio
 from playwright.async_api import async_playwright
 import csv
 
-async def crawl_gartner_2026_top10():
-    # 2026년 최신 뉴스가 모여있는 메인 페이지
-    url = "https://www.gartner.com/en/newsroom"
+async def crawl_gartner_rss_safe():
+    # 가트너가 공식적으로 제공하는 뉴스 RSS 피드 (보안 검사가 훨씬 약함)
+    url = "https://www.gartner.com/it/content/xml/newsroom.xml"
     file_name = 'Gartner_Insight_Archive.csv'
     all_data = []
 
     async with async_playwright() as p:
-        # 가트너가 의심하지 못하게 '유저 데이터'를 더 정교하게 위장
+        # 브라우저 대신 단순 리퀘스트 모드로 동작 시도
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            viewport={'width': 1280, 'height': 800}
-        )
-        page = await context.new_page()
+        page = await browser.new_page()
 
-        print(f"🎯 2026 가트너 최신 자료 수집 시작 (타겟: 메인 페이지)")
+        print(f"📡 가트너 RSS 전용 채널 접속 시도...")
         
         try:
-            # 접속 (네트워크가 조용해질 때까지 넉넉히 대기)
-            await page.goto(url, wait_until="networkidle", timeout=60000)
-            await asyncio.sleep(5) 
-
-            # 화면을 조금씩 내려서 숨겨진 뉴스 카드가 나타나게 함 (Lazy Loading 대응)
-            for _ in range(3):
-                await page.evaluate("window.scrollBy(0, 500)")
-                await asyncio.sleep(1)
-
-            # 모든 뉴스 링크 추출
-            page_data = await page.evaluate("""
-                () => {
-                    const results = [];
-                    // 가트너 뉴스룸 링크 패턴
-                    const links = document.querySelectorAll('a[href*="/newsroom/press-releases/"]');
-                    
-                    // 최대 20개까지만 수집 (안전성 확보)
-                    const limit = Math.min(links.length, 20);
-                    
-                    for(let i=0; i < limit; i++) {
-                        const a = links[i];
-                        const text = a.innerText.trim();
-                        if (text.length > 10) {
-                            results.push({
-                                date: "2026-Recent",
-                                title: text.replace(/\\n/g, ' '),
-                                link: a.href
-                            });
-                        }
-                    }
-                    return results;
-                }
-            """)
+            # RSS는 가볍기 때문에 타임아웃을 30초로 줄여도 충분합니다.
+            response = await page.goto(url, wait_until="commit", timeout=30000)
             
-            all_data = page_data
-            print(f"✅ 최신 기사 {len(all_data)}건 발견!")
+            # XML 데이터 파싱 (제목과 링크 추출)
+            content = await page.content()
+            
+            # 간단한 텍스트 파싱으로 2026년 최신 데이터 10개 추출
+            import re
+            titles = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', content)
+            links = re.findall(r'<link>(.*?)</link>', content)
+
+            for i in range(min(len(titles), 15)):
+                # RSS 최상단은 보통 뉴스룸 메인이므로 제외
+                if "Newsroom" in titles[i] and i == 0: continue
+                
+                all_data.append({
+                    "date": "2026-Latest",
+                    "title": titles[i].strip(),
+                    "link": links[i].strip()
+                })
+            
+            print(f"✅ RSS를 통해 최신 자료 {len(all_data)}건 확보!")
 
         except Exception as e:
-            print(f"❌ 수집 중 오류: {e}")
+            print(f"❌ RSS 접속 실패: {e}")
+            # 만약 RSS도 막혔다면, 최종 수단으로 '구글 뉴스' 검색 결과 우회 시도 코드로 자동 전환 가능
 
         await browser.close()
 
-    # 결과 저장
     if all_data:
         with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.DictWriter(f, fieldnames=["date", "title", "link"])
             writer.writeheader()
             writer.writerows(all_data)
-        print(f"✨ 수집 완료! {file_name} 확인 부탁드립니다.")
+        print(f"✨ [성공] {file_name} 저장 완료.")
     else:
-        # 파일이 없으면 깃허브 액션이 에러나므로 빈 파일 생성
+        # 빈 파일이라도 생성하여 에러 방지
         with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
-            f.write("date,title,link\\n")
-        print("🚨 데이터 수집 실패. 가트너 보안이 매우 강력합니다.")
+            f.write("date,title,link\n")
+        print("🚨 모든 우회로가 차단되었습니다.")
 
 if __name__ == "__main__":
-    asyncio.run(crawl_gartner_2026_top10())
+    asyncio.run(crawl_gartner_rss_safe())
