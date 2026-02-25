@@ -2,8 +2,8 @@ name: Gartner Insight Sync
 
 on:
   schedule:
-    - cron: '0 0 * * 1' # 매주 월요일 자동 실행
-  workflow_dispatch:   # 수동 실행 버튼 생성
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -25,10 +25,19 @@ jobs:
       - name: Run Gartner Crawler
         run: python gartner_bot.py
 
+      - name: Check Files (파일 생성 확인)
+        run: ls -R  # 여기서 파일이 실제로 만들어졌는지 로그에 보여줍니다.
+
       - name: Commit and Push
         run: |
           git config --global user.name "GartnerBot"
           git config --global user.email "bot@gartner.com"
-          git add Gartner_Insight_Archive.csv
-          git commit -m "Update Gartner Insights $(date +'%Y-%m-%d')" || echo "No changes"
-          git push
+          # 파일이 존재할 때만 git add를 실행하도록 수정
+          if [ -f "Gartner_Insight_Archive.csv" ]; then
+            git add Gartner_Insight_Archive.csv
+            git commit -m "Update Gartner Insights $(date +'%Y-%m-%d')" || echo "No changes to commit"
+            git push
+          else
+            echo "⚠️ 에러: Gartner_Insight_Archive.csv 파일이 생성되지 않았습니다. 파이썬 로그를 확인하세요."
+            exit 1
+          fi
