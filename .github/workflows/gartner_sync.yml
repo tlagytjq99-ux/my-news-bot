@@ -1,0 +1,34 @@
+name: Gartner Insight Sync
+
+on:
+  schedule:
+    - cron: '0 0 * * 1' # 매주 월요일 실행
+  workflow_dispatch:   # 필요할 때 수동 실행 가능
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: pip install requests
+
+      - name: Run Crawler
+        run: python gartner_bot.py
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name "GartnerBot"
+          git config --global user.email "bot@gartner.com"
+          if [ -f "Gartner_Insight_Archive.csv" ]; then
+            git add Gartner_Insight_Archive.csv
+            git commit -m "Update Gartner Insights $(date +'%Y-%m-%d')" || echo "No changes"
+            git push
+          fi
