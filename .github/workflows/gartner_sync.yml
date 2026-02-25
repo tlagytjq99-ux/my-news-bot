@@ -1,35 +1,66 @@
-name: Gartner Insight Sync (Light Mode)
+name: Gartner Newsroom Crawler
 
 on:
-  schedule:
-    - cron: '0 0 * * 1'
+  # ── 수동 실행 ──────────────────────────────
   workflow_dispatch:
 
+  # ── 스케줄: 매일 오전 9시 (KST = UTC+9, 즉 UTC 0시) ──
+  schedule:
+    - cron: "0 0 * * *"
+
 jobs:
-  build:
+  crawl:
+    name: Crawl Gartner Newsroom
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      # ── 1. 저장소 체크아웃 ─────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      # ── 2. Python 설정 ────────────────────────────────
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: "3.11"
 
-      - name: Install Dependencies
+      # ── 3. 의존성 설치 ────────────────────────────────
+      - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4
+          pip install playwright
+          playwright install chromium
+          playwright install-deps chromium
 
-      - name: Run Gartner Crawler
-        run: python gartner_bot.py
+      # ── 4. 크롤러 실행 ────────────────────────────────
+      - name: Run Gartner crawler
+        run: python gartner_crawler.py
 
-      - name: Commit and Push
+      # ── 5. 결과 파일 아티팩트 업로드 ─────────────────
+      - name: Upload crawl results
+        uses: actions/upload-artifact@v4
+        if: always()           # 실패해도 결과 파일 보존
+        with:
+          name: gartner-news-${{ github.run_number }}
+          path: |
+            gartner_news_*.json
+            gartner_news_*.csv
+          retention-days: 30   # 30일 보관
+
+      # ── 6. (선택) 결과를 저장소에 자동 커밋 ──────────
+      #   원하지 않으면 이 스텝을 삭제하세요.
+      - name: Commit results to repository
         run: |
-          git config --global user.name "GartnerBot"
-          git config --global user.email "bot@gartner.com"
-          if [ -f "Gartner_Insight_Archive.csv" ]; then
-            git add Gartner_Insight_Archive.csv
-            git commit -m "Update Gartner Insights $(date +'%Y-%m-%d')" || echo "No changes"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 결과 파일이 존재할 때만 커밋
+          if ls gartner_news_*.json 1>/dev/null 2>&1; then
+            mkdir -p data
+            cp gartner_news_*.json gartner_news_*.csv data/ 2>/dev/null || true
+            git add data/
+            git diff --cached --quiet || git commit -m "chore: gartner newsroom crawl $(date +'%Y-%m-%d %H:%M')"
             git push
+          else
+            echo "결과 파일 없음 – 커밋 생략"
           fi
