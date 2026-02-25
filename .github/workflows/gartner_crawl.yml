@@ -28,9 +28,9 @@ jobs:
       # ── 3. 의존성 설치 ────────────────────────────────
       - name: Install dependencies
         run: |
-          pip install playwright
-          playwright install chromium
-          playwright install-deps chromium
+            pip install requests playwright
+            playwright install chromium
+            playwright install-deps chromium
 
       # ── 4. 크롤러 실행 ────────────────────────────────
       - name: Run Gartner crawler
