@@ -1,20 +1,33 @@
 """
-Gartner Newsroom Crawler
-가트너 뉴스룸에서 최신 10개 기사를 크롤링합니다.
+Gartner Newsroom Crawler v2
+- 기사 링크 URL 패턴(/newsroom/press-releases/, /newsroom/announcements/ 등)으로 필터링
+- 페이지가 완전히 렌더링될 때까지 명시적으로 대기
 """
 
 import json
 import csv
+import os
 import time
 from datetime import datetime
-from playwright.sync_api import sync_playwright
-
+from playwright.sync_api import sync_playwright, TimeoutError as PwTimeout
 
 NEWSROOM_URL = "https://www.gartner.com/en/newsroom"
 
+# 가트너 기사 URL에 포함되는 경로 패턴
+ARTICLE_PATH_KEYWORDS = [
+    "/newsroom/press-releases/",
+    "/newsroom/announcements/",
+    "/newsroom/q-and-a/",
+    "/newsroom/conference-highlights/",
+]
 
-def crawl_gartner_newsroom() -> list[dict]:
-    """가트너 뉴스룸에서 최신 10개 기사를 크롤링합니다."""
+
+def is_article_url(href: str) -> bool:
+    """가트너 뉴스 기사 URL인지 판별합니다."""
+    return any(kw in href for kw in ARTICLE_PATH_KEYWORDS)
+
+
+def crawl_gartner_newsroom(max_articles: int = 10) -> list[dict]:
     results = []
 
     with sync_playwright() as p:
@@ -31,123 +44,145 @@ def crawl_gartner_newsroom() -> list[dict]:
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
+                "Chrome/122.0.0.0 Safari/537.36"
             ),
+            locale="en-US",
             viewport={"width": 1280, "height": 900},
         )
         page = context.new_page()
 
-        print(f"[{datetime.now()}] 가트너 뉴스룸 접속 중...")
-        page.goto(NEWSROOM_URL, wait_until="networkidle", timeout=60_000)
+        # ── 1. 페이지 접속 ─────────────────────────────────────────────────
+        print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 가트너 뉴스룸 접속 중...")
+        page.goto(NEWSROOM_URL, wait_until="domcontentloaded", timeout=60_000)
 
-        # 쿠키 동의 팝업 처리 (있는 경우)
-        try:
-            page.click("button#onetrust-accept-btn-handler", timeout=5_000)
-            print("쿠키 동의 완료")
-            time.sleep(1)
-        except Exception:
-            pass
-
-        # 뉴스 카드가 로드될 때까지 대기
-        print("뉴스 카드 로딩 대기 중...")
-        page.wait_for_selector(
-            "article, .newsroom-article, [class*='article-card'], [class*='news-card']",
-            timeout=30_000,
-        )
-        time.sleep(2)
-
-        # ── 여러 CSS 선택자를 순서대로 시도 ──────────────────────────────────
-        selectors_to_try = [
-            # 가장 일반적인 패턴
-            "article",
-            "[class*='article-card']",
-            "[class*='news-card']",
-            "[class*='newsroom-card']",
-            ".card",
-            "li[class*='item']",
-        ]
-
-        article_elements = []
-        used_selector = ""
-        for sel in selectors_to_try:
-            els = page.query_selector_all(sel)
-            if len(els) >= 3:
-                article_elements = els
-                used_selector = sel
-                break
-
-        print(f"선택자 '{used_selector}'로 {len(article_elements)}개 요소 발견")
-
-        # 최신 10개만 처리
-        for idx, el in enumerate(article_elements[:10], start=1):
+        # ── 2. 쿠키 팝업 처리 ─────────────────────────────────────────────
+        for btn_sel in [
+            "#onetrust-accept-btn-handler",
+            "button:has-text('Accept')",
+            "button:has-text('Agree')",
+        ]:
             try:
-                # 제목
-                title = ""
-                for title_sel in ["h1", "h2", "h3", "h4", "[class*='title']"]:
-                    t_el = el.query_selector(title_sel)
-                    if t_el:
-                        title = t_el.inner_text().strip()
-                        if title:
-                            break
+                page.click(btn_sel, timeout=4_000)
+                print("  쿠키 동의 완료")
+                time.sleep(1)
+                break
+            except Exception:
+                pass
 
-                # URL
-                url = ""
-                link_el = el.query_selector("a")
-                if link_el:
-                    href = link_el.get_attribute("href") or ""
-                    url = href if href.startswith("http") else f"https://www.gartner.com{href}"
+        # ── 3. 기사 링크가 나타날 때까지 대기 ─────────────────────────────
+        print("  뉴스 기사 링크 로딩 대기 중...")
+        try:
+            page.wait_for_selector(
+                "a[href*='/newsroom/press-releases/'], "
+                "a[href*='/newsroom/announcements/'], "
+                "a[href*='/newsroom/q-and-a/']",
+                timeout=30_000,
+            )
+        except PwTimeout:
+            print("  ⚠️  기사 링크 대기 시간 초과. 현재 로드된 내용으로 진행합니다.")
 
-                # 날짜
+        # 동적 렌더링 완료를 위한 추가 대기
+        time.sleep(3)
+
+        # ── 4. 모든 <a> 태그 수집 후 기사 URL 필터링 ──────────────────────
+        all_links = page.query_selector_all("a[href]")
+        print(f"  전체 링크 수: {len(all_links)}개")
+
+        seen_urls: set[str] = set()
+        article_links = []
+
+        for link in all_links:
+            href = link.get_attribute("href") or ""
+            if not is_article_url(href):
+                continue
+
+            full_url = href if href.startswith("http") else f"https://www.gartner.com{href}"
+            if full_url in seen_urls:
+                continue
+            seen_urls.add(full_url)
+            article_links.append((link, full_url))
+
+        print(f"  기사 링크 필터링 결과: {len(article_links)}개")
+
+        if not article_links:
+            # 디버그용: 현재 페이지 HTML 저장
+            with open("debug_page.html", "w", encoding="utf-8") as f:
+                f.write(page.content())
+            print("  ❌ 기사 링크를 찾지 못했습니다. debug_page.html을 확인하세요.")
+            browser.close()
+            return []
+
+        # ── 5. 각 링크에서 제목·날짜·카테고리·요약 추출 ──────────────────
+        for idx, (link_el, full_url) in enumerate(article_links[:max_articles], start=1):
+            try:
+                # ① 제목: 링크 텍스트 우선
+                title = link_el.inner_text().strip()
+
+                # 링크 텍스트가 너무 짧으면 부모 컨테이너에서 제목 태그 탐색
+                if len(title) < 10:
+                    parent = link_el.evaluate_handle(
+                        "el => el.closest('article, li, div[class*=\"card\"], div[class*=\"item\"]')"
+                    )
+                    parent_el = parent.as_element() if parent else None
+                    if parent_el:
+                        for h in ["h1", "h2", "h3", "h4"]:
+                            h_el = parent_el.query_selector(h)
+                            if h_el:
+                                t = h_el.inner_text().strip()
+                                if t:
+                                    title = t
+                                    break
+
+                # ② 카드(컨테이너) 탐색
+                card_handle = link_el.evaluate_handle(
+                    "el => el.closest('article, li, section, "
+                    "div[class*=\"card\"], div[class*=\"item\"], div[class*=\"result\"]')"
+                )
+                card_el = card_handle.as_element() if card_handle else None
+
+                # ③ 날짜
                 date = ""
-                for date_sel in ["time", "[class*='date']", "[class*='time']", "[datetime]"]:
-                    d_el = el.query_selector(date_sel)
-                    if d_el:
-                        date = (
-                            d_el.get_attribute("datetime")
-                            or d_el.inner_text().strip()
-                        )
-                        if date:
-                            break
+                if card_el:
+                    for date_sel in ["time[datetime]", "time", "[class*='date']", "[class*='time']"]:
+                        d = card_el.query_selector(date_sel)
+                        if d:
+                            date = d.get_attribute("datetime") or d.inner_text().strip()
+                            if date:
+                                break
 
-                # 카테고리 / 태그
+                # ④ 카테고리
                 category = ""
-                for cat_sel in [
-                    "[class*='category']",
-                    "[class*='tag']",
-                    "[class*='topic']",
-                    "[class*='label']",
-                ]:
-                    c_el = el.query_selector(cat_sel)
-                    if c_el:
-                        category = c_el.inner_text().strip()
-                        if category:
-                            break
+                if card_el:
+                    for cat_sel in ["[class*='category']", "[class*='topic']", "[class*='tag']", "[class*='label']"]:
+                        c = card_el.query_selector(cat_sel)
+                        if c:
+                            category = c.inner_text().strip()
+                            if category:
+                                break
 
-                # 요약문 (description / summary)
+                # ⑤ 요약
                 summary = ""
-                for sum_sel in [
-                    "p",
-                    "[class*='description']",
-                    "[class*='summary']",
-                    "[class*='excerpt']",
-                ]:
-                    s_el = el.query_selector(sum_sel)
-                    if s_el:
-                        summary = s_el.inner_text().strip()
-                        if summary:
-                            break
+                if card_el:
+                    for sum_sel in ["p", "[class*='description']", "[class*='summary']", "[class*='excerpt']"]:
+                        s = card_el.query_selector(sum_sel)
+                        if s:
+                            text = s.inner_text().strip()
+                            if text and text != title:
+                                summary = text
+                                break
 
                 article = {
                     "rank": idx,
                     "title": title,
-                    "url": url,
+                    "url": full_url,
                     "date": date,
                     "category": category,
                     "summary": summary,
                     "crawled_at": datetime.now().isoformat(),
                 }
                 results.append(article)
-                print(f"  [{idx}] {title[:60]}{'...' if len(title) > 60 else ''}")
+                print(f"  [{idx:02d}] {title[:70]}{'...' if len(title) > 70 else ''}")
+                print(f"        날짜: {date or '(없음)'}  |  카테고리: {category or '(없음)'}")
 
             except Exception as e:
                 print(f"  [{idx}] 파싱 오류: {e}")
@@ -158,56 +193,54 @@ def crawl_gartner_newsroom() -> list[dict]:
 
 
 def save_results(data: list[dict]) -> None:
-    """크롤링 결과를 JSON / CSV 두 가지 형식으로 저장합니다."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # JSON 저장
+    # JSON
     json_path = f"gartner_news_{timestamp}.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"\nJSON 저장 완료: {json_path}")
+    print(f"\n✅ JSON 저장: {json_path}")
 
-    # CSV 저장
+    # CSV (UTF-8 BOM → Excel 한글 깨짐 방지)
     csv_path = f"gartner_news_{timestamp}.csv"
     if data:
         with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=data[0].keys())
             writer.writeheader()
             writer.writerows(data)
-        print(f"CSV  저장 완료: {csv_path}")
+        print(f"✅ CSV  저장: {csv_path}")
 
-    # GitHub Actions summary 출력
-    summary_lines = [
-        "## 🗞️ Gartner Newsroom – 최신 10개 기사\n",
-        f"크롤링 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+    # GitHub Actions Step Summary
+    lines = [
+        "## 🗞️ Gartner Newsroom – 최신 기사\n",
+        f"크롤링 시각: {datetime.now():%Y-%m-%d %H:%M:%S}\n",
         "| # | 제목 | 날짜 | 카테고리 |",
         "|---|------|------|----------|",
     ]
     for item in data:
-        title_link = f"[{item['title'][:50]}]({item['url']})" if item["url"] else item["title"][:50]
-        summary_lines.append(
-            f"| {item['rank']} | {title_link} | {item['date']} | {item['category']} |"
+        linked_title = (
+            f"[{item['title'][:60]}]({item['url']})"
+            if item["url"] else item["title"][:60]
+        )
+        lines.append(
+            f"| {item['rank']} | {linked_title} | {item['date']} | {item['category']} |"
         )
 
-    summary_md = "\n".join(summary_lines)
-
-    # $GITHUB_STEP_SUMMARY 에 기록 (GitHub Actions 환경)
-    import os
     gh_summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if gh_summary:
         with open(gh_summary, "a", encoding="utf-8") as f:
-            f.write(summary_md + "\n")
-        print("GitHub Actions 스텝 요약 기록 완료")
+            f.write("\n".join(lines) + "\n")
+        print("✅ GitHub Actions 스텝 요약 기록 완료")
     else:
-        print("\n" + summary_md)
+        print("\n" + "\n".join(lines))
 
 
 if __name__ == "__main__":
-    articles = crawl_gartner_newsroom()
+    articles = crawl_gartner_newsroom(max_articles=10)
 
     if articles:
         print(f"\n총 {len(articles)}개 기사 크롤링 성공")
         save_results(articles)
     else:
-        print("크롤링된 데이터가 없습니다. 사이트 구조 변경 여부를 확인하세요.")
+        print("\n❌ 크롤링된 데이터가 없습니다.")
         raise SystemExit(1)
