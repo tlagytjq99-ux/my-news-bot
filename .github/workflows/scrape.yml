@@ -1,0 +1,27 @@
+name: AI Powered News Scraper
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Python Setup
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Install
+        run: pip install requests beautifulsoup4 pandas openpyxl
+      - name: Run
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }} # 깃허브 시크릿에서 토큰 호출
+        run: python scraper.py
+      - name: Upload Excel
+        run: |
+          git config --global user.name "AI-Bot"
+          git config --global user.email "bot@ai.com"
+          git add whitehouse_ai_report.xlsx
+          git commit -m "AI 리포트 업데이트" || echo "No changes"
+          git push
